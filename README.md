@@ -1,6 +1,34 @@
 # ini.el
 **Author** Daniel Ness  
-_This is a library with which to handle [INI](http://en.wikipedia.org/wiki/INI_file) style configuration files._
+
+### About
+This is a library with which to handle [INI](http://en.wikipedia.org/wiki/INI_file) style configuration files with 
+Emacs Lisp. It has been developed as part of a larger project which I am currently working on, as a simple form of
+configuration persistence.
+
+### Features
+* Conversion of INI-format to Elisp Association Lists
+* Conversion of an Association List to INI-format string
+
+### Usage
+```Lisp
+(require 'ini.el)
+
+(let ((fname "/path/to/file.ini"))
+
+  ;; To parse an ini file
+  (setq txt
+    (with-temp-buffer
+      (insert-file-contents "/path/to/file.ini")
+      (buffer-string)))
+  (setq alist (ini-decode txt))
+
+  ;; To write to an ini file
+  (with-temp-buffer
+    (let ((txt (ini-encode alist)))
+      (insert txt)
+      (append-to-file (beginning-of-buffer) (end-of-buffer) "/path/to/other/file.ini"))))
+```
 
 ### License
 This file is free software; you can redistribute it and/or modify
