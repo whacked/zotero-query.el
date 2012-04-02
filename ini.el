@@ -76,3 +76,4 @@
     txt))
 
 
+(provide 'ini)
