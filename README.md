@@ -1,8 +1,8 @@
-# ini.el #
-## Converting between INI files and association lists ##
-## Daniel Ness ## 
+# ini.el
+**Author** Daniel Ness  
+_This is a library with which to handle [INI](http://en.wikipedia.org/wiki/INI_file) style configuration files._
 
-### License ### 
+### License
 This file is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
 the Free Software Foundation; either version 2, or (at your option)
