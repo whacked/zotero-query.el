@@ -3,7 +3,7 @@
 
 ### About
 This is a library with which to handle [INI](http://en.wikipedia.org/wiki/INI_file) style configuration files with 
-Emacs Lisp. It has been developed as part of a larger project which I am currently working on, as a simple form of
+Emacs Lisp. It has been developed as part of a larger project that I am currently working on, as a simple form of
 configuration persistence.
 
 ### Features
