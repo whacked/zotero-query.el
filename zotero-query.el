@@ -13,6 +13,7 @@
    (format "%s -separator '\t' '%s' '%s'" sql-sqlite-program zotero-db sql-query)))
 
 (let* ((argstring "mechanism")
+       (attachment-typeID (sqlite3-chomp (sqlite3-query "SELECT itemTypeID FROM itemTypes WHERE typeName = '\\''attachment'\\'' LIMIT 1")))
        (query-result (sqlite3-query 
                       (concat "SELECT "
                               "  it.itemID"
@@ -24,7 +25,9 @@
                               ", itemDataValues  AS itdv"
                               ", fields          AS fld"
                               " WHERE "
-                              "     it.itemID = itd.itemID"
+                              ;; do not match attachment type
+                              "     it.itemTypeID <> " (format "%s" attachment-typeID)
+                              " AND it.itemID = itd.itemID"
                               " AND itdv.valueID = itd.valueID"
                               " AND itd.fieldID = fld.fieldID"
                               " AND itdv.value LIKE '\\''%%"
@@ -59,30 +62,48 @@
       ;;           (assoc opr zotero-handler-alist)) 2) res))
 
       ;; look for files
-      (
-       (concat "[" (getattr res :title) "] found ... what do?\n"))
-      
-      ;; (if (file-exists-p (getattr res :file-path))
-      ;;     (let ((opr (char-to-string (read-char
-      ;;                                 ;; render menu text here
-      ;;                                 (concat "[" (getattr res :book-name) "] found ... what do?\n"
-      ;;                                         (mapconcat #'(lambda (handler-list)
-      ;;                                                        (let ((hotkey      (elt handler-list 0))
-      ;;                                                              (description (elt handler-list 1))
-      ;;                                                              (handler-fn  (elt handler-list 2)))
-      ;;                                                          ;; ULGY BANDAIT HACK
-      ;;                                                          ;; replace "insert" with "copy to clipboard" if mark-active
-      ;;                                                          (format " %s :   %s"
-      ;;                                                                  hotkey
-      ;;                                                                  (if mark-active
-      ;;                                                                      (replace-regexp-in-string "insert \\(.*\\)" "copy \\1 to clipboard" description)
-      ;;                                                                    description)))
-      ;;                                                        ) zotero-handler-alist "\n"))))))
-      ;;       (funcall
-      ;;        (elt (if (null (assoc opr zotero-handler-alist)) (assoc "q" zotero-handler-alist)
-      ;;               (assoc opr zotero-handler-alist)) 2) res))
-      ;;   (message "didn't find that file"))
-      ))
+      (let ((match-atta-list (mapcar
+                              (lambda (line)
+                                (sqlite3-destruct-line-to-alist '(:key :mimeType :path) line))
+                              (split-string
+                               (sqlite3-chomp
+                                (sqlite3-query
+                                 (concat
+                                  " SELECT"
+                                  "   itm.key"
+                                  ",  atta.mimeType"
+                                  ",  atta.path"
+                                  " FROM"
+                                  "  items AS itm "
+                                  ", itemAttachments AS atta "
+                                  " WHERE "
+                                  "      atta.sourceItemID = " (format "%s" (getattr res :itemID))
+                                  " AND itm.itemID = atta.itemID"
+                                  )))
+                               "\n"))))
+        (if (< 0 (length match-atta-list))
+            (progn
+
+              (let* ((first-item (nth 0 match-atta-list))
+                     (item-path
+                      (concat
+                       (file-name-as-directory
+                        (concat (file-name-as-directory zotero-storage-dir)
+                                (getattr first-item :key)))
+                       ;; strip the "storage:" prefix
+                       (substring (getattr first-item :path) 8))))
+
+                (if (file-exists-p item-path)
+                    (progn
+                      item-path
+                      (start-process "shell-process" "*Messages*" zotero-default-opener item-path)
+                      ))
+                )
+              )
+            )
+        )
+      )
+    )
   )
 
 
@@ -121,6 +142,16 @@
          "open")
         (t (message "unknown system!?"))))
 
+(defun number-sequence-0 (excluded-end)
+  (number-sequence 0 (1- excluded-end)))
+
+(defun sqlite3-destruct-line-to-alist (field-keyword-list query-result-line)
+  (let ((spl-query-result (split-string (zotero-chomp query-result-line) "\t")))
+    (mapcar* 'list field-keyword-list
+             (mapcar
+              (lambda (idx)
+                (nth idx spl-query-result))
+              (number-sequence-0 (length field-keyword-list))))))
 
 (defun zotero-query-to-alist (query-result)
   "builds alist out of a full zotero-query query record result"
