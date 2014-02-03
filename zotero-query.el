@@ -252,11 +252,21 @@
               ;; capture 4 digits of date          into group \2
               ;; capture first word in title       into group \3
               "\\b\\(.+?\\)\\(?:etal\\)?\\([[:digit:]]\\\{4\\\}\\)\\(.*\\)\\b"
-              "WHERE lower(b.author_sort) LIKE '\\\\''%\\1%'\\\\'' AND lower(b.title) LIKE '\\\\''\\3%'\\\\''AND b.pubdate >= '\\\\''\\2-01-01'\\\\'' AND b.pubdate <= '\\\\''\\2-12-31'\\\\'' LIMIT 1" (word-at-point))))
+              (concat
+               " AND itdv_titl.value LIKE '%\\3%'"
+               " AND itdv_date.value LIKE '\\2%'"
+               " AND LOWER(crtrd.lastName) LIKE '\\1%'"
+               " ORDER BY"
+               " itd_crtr.orderIndex ASC"
+               " LIMIT 1")
+              (word-at-point))))
         ;; (mark-word)
         ;; (zotero-find (zotero-build-default-query where-string))
-        (insert where-string)
-        )
+        (sqlite3-destructure-line-to-alist
+         '(:itemID :key :value :date :author)
+         (sqlite3-query (sqlite3-quote-for-sh (concat
+                                               zotero-base-sql-select
+                                               where-string)))))
     (message "nothing at point!")))
 
 (setq zotero-base-sql-select
