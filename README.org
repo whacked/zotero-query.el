@@ -1,0 +1,18 @@
+* elisp wrappers for querying against zotero.sqlite
+
+  in the fashion of https://github.com/whacked/calibre-mode; will probably merge at some point
+
+  goal is to provide convenience functions / keys to query the zotero db + open files, without having to have a running zotero instance
+
+** issues
+
+*** TODO figure out where the profile directory is
+
+*** TODO figure out how to deal with sqlite db lock
+
+** see also
+
+   - https://bitbucket.org/egh/zotero-plain/
+     this one requires a running zotero service... also still in flux.
+   - https://github.com/vitoshka/zotelo
+     use case too specific for me right now
