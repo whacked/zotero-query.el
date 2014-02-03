@@ -1,8 +1,22 @@
 ;; TODO: derive profile directory
-;; (defvar zotero-root-dir (expand-file-name "~/Library/Application Support/Zotero/Profiles/{PID}.default/zotero"))
+;; figure out app data directory
+(let ((candidate-path
+       (cond ((eq system-type 'darwin)
+              (expand-file-name "~/Library/Application Support/Zotero/Profiles"))
+             ((eq system-type 'gnu/linux)
+              (expand-file-name "~/.mozilla/firefox/Profiles"))
+             (t))))
+  (if (and candidate-path
+           (file-exists-p candidate-path))
+      (defvar zotero-root-dir
+        (concat (file-name-as-directory (first (directory-files candidate-path t "[a-zA-Z0-9]+")))
+                "zotero"))
+    (message "UH OH DUNNO")))
+
 (defvar zotero-db (concat zotero-root-dir "/zotero.sqlite"))
+
 (defvar zotero-storage-dir (concat (file-name-as-directory zotero-root-dir) "storage"))
-(setq zotero-db "/Volumes/ramdisk/zotero-query.el/zotero.sqlite")
+;; (setq zotero-db "/Volumes/ramdisk/zotero-query.el/zotero.sqlite")
 
 (defun sqlite3-chomp (s)
   (replace-regexp-in-string "[\s\n]+$" "" s))
