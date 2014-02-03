@@ -177,7 +177,7 @@
 (defun zotero-query-to-alist (query-result-line)
   "builds alist out of a full zotero-query query record result"
   (sqlite3-destructure-line-to-alist
-   '(:itemID :key :value :date :author)
+   '(:itemID :key :title :date :author)
    query-result-line))
 
 (defun zotero-build-default-query (whereclause &optional limit)
@@ -238,32 +238,32 @@
         (message "supposed to insert this!")
         ))))
 
-;; FIXME the <= part looks wrong. should be next year's 01-01
-(defun zotero-open-citekey ()
+(defun zotero-open-citekey (&optional citekey)
   (interactive)
-  (if (word-at-point)
-      (let ((where-string
-             (replace-regexp-in-string
-              ;; capture all up to optional "etal" into group \1
-              ;; capture 4 digits of date          into group \2
-              ;; capture first word in title       into group \3
-              "\\b\\(.+?\\)\\(?:etal\\)?\\([[:digit:]]\\\{4\\\}\\)\\(.*\\)\\b"
-              (concat
-               " AND itdv_titl.value LIKE '%\\3%'"
-               " AND itdv_date.value LIKE '\\2%'"
-               " AND LOWER(crtrd.lastName) LIKE '\\1%'"
-               " ORDER BY"
-               " itd_crtr.orderIndex ASC"
-               " LIMIT 1")
-              (word-at-point))))
-        ;; (mark-word)
-        ;; (zotero-find (zotero-build-default-query where-string))
-        (sqlite3-destructure-line-to-alist
-         '(:itemID :key :value :date :author)
-         (sqlite3-query (sqlite3-quote-for-sh (concat
-                                               zotero-base-sql-select
-                                               where-string)))))
-    (message "nothing at point!")))
+  (let ((citekey (or citekey (word-at-point))))
+    (if citekey
+        (let ((where-string
+               (replace-regexp-in-string
+                ;; capture all up to optional "etal" into group \1
+                ;; capture 4 digits of date          into group \2
+                ;; capture first word in title       into group \3
+                "\\b\\(.+?\\)\\(?:etal\\)?\\([[:digit:]]\\\{4\\\}\\)\\(.*\\)\\b"
+                (concat
+                 " AND itdv_titl.value LIKE '%\\3%'"
+                 " AND itdv_date.value LIKE '\\2%'"
+                 " AND LOWER(crtrd.lastName) LIKE '\\1%'"
+                 " ORDER BY"
+                 " itd_crtr.orderIndex ASC"
+                 " LIMIT 1")
+                citekey)))
+          ;; (mark-word)
+          ;; (zotero-find (zotero-build-default-query where-string))
+          
+          (zotero-query-to-alist
+           (sqlite3-query (sqlite3-quote-for-sh (concat
+                                                 zotero-base-sql-select
+                                                 where-string)))))
+        (message "nothing at point!"))))
 
 (setq zotero-base-sql-select
       (concat
@@ -323,13 +323,16 @@
 
 (defun zotero-make-citekey (zotero-res-alist)
   "return some kind of a unique citation key for BibTeX use"
-  (let* ((spl (split-string (sqlite3-chomp (getattr zotero-res-alist :author-sort)) "&"))
-         (first-author-lastname (first (split-string (first spl) ",")))
-         (first-word-in-title (first (split-string (getattr zotero-res-alist :book-title) " "))))
+  (let* ((first-word-in-title
+          (first
+           ;; skip words < 5 ch in length
+           (delq nil
+                 (mapcar
+                  #'(lambda (s) (if (< 4 (length s)) s))
+                  (split-string (getattr zotero-res-alist :title) " "))))))
     (concat
-     (downcase (replace-regexp-in-string  "\\W" "" first-author-lastname))
-     (if (< 1 (length spl)) "etal" "")
-     (substring (getattr zotero-res-alist :book-pubdate) 0 4)
+     (downcase (getattr zotero-res-alist :author))
+     (substring (getattr zotero-res-alist :date) 0 4)
      (downcase (replace-regexp-in-string  "\\W.*" "" first-word-in-title)))))
 
 (defun mark-aware-copy-insert (content)
@@ -354,8 +357,6 @@
                                                               (if (file-exists-p xoj-file-path)
                                                                   xoj-file-path
                                                                 (getattr res :file-path))))))
-                              ("s" "insert calibre search string"
-                               (lambda (res) (mark-aware-copy-insert (concat "title:\"" (getattr res :book-title) "\""))))
                               ("c" "insert citekey"
                                (lambda (res) (mark-aware-copy-insert (zotero-make-citekey res))))
                               ("i" "get book information (SELECT IN NEXT MENU) and insert"
@@ -413,6 +414,76 @@
                                (lambda (res)
                                  (deactivate-mark)
                                  (message "cancelled")))))
+
+(defun zotoer-handle-result (res)
+  "res should be an alist returned by a destructured query"
+  ;; (if (file-exists-p (getattr res :file-path))
+  ;;     (let ((opr (char-to-string (read-char
+  ;;                                 ;; render menu text here
+  ;;                                 (concat "[" (getattr res :book-name) "] found ... what do?\n"
+  ;;                                         (mapconcat #'(lambda (handler-list)
+  ;;                                                        (let ((hotkey      (elt handler-list 0))
+  ;;                                                              (description (elt handler-list 1))
+  ;;                                                              (handler-fn  (elt handler-list 2)))
+  ;;                                                          ;; ULGY BANDAIT HACK
+  ;;                                                          ;; replace "insert" with "copy to clipboard" if mark-active
+  ;;                                                          (format " %s :   %s"
+  ;;                                                                  hotkey
+  ;;                                                                  (if mark-active
+  ;;                                                                      (replace-regexp-in-string "insert \\(.*\\)" "copy \\1 to clipboard" description)
+  ;;                                                                    description)))
+  ;;                                                        ) zotero-handler-alist "\n"))))))
+  ;;       (funcall
+  ;;        (elt (if (null (assoc opr zotero-handler-alist)) (assoc "q" zotero-handler-alist)
+  ;;               (assoc opr zotero-handler-alist)) 2) res))
+  ;;   (message "didn't find that file"))
+  )
+
+(let ((res (zotero-open-citekey "balestra2012process")))
+
+  ;; (if (file-exists-p (getattr res :file-path))
+  ;;     (let ((opr (char-to-string (read-char
+  ;;                                 ;; render menu text here
+  ;;                                 (concat "[" (getattr res :book-name) "] found ... what do?\n"
+  ;;                                         (mapconcat #'(lambda (handler-list)
+  ;;                                                        (let ((hotkey      (elt handler-list 0))
+  ;;                                                              (description (elt handler-list 1))
+  ;;                                                              (handler-fn  (elt handler-list 2)))
+  ;;                                                          ;; ULGY BANDAIT HACK
+  ;;                                                          ;; replace "insert" with "copy to clipboard" if mark-active
+  ;;                                                          (format " %s :   %s"
+  ;;                                                                  hotkey
+  ;;                                                                  (if mark-active
+  ;;                                                                      (replace-regexp-in-string "insert \\(.*\\)" "copy \\1 to clipboard" description)
+  ;;                                                                    description)))
+  ;;                                                        ) zotero-handler-alist "\n"))))))
+  ;;       (funcall
+  ;;        (elt (if (null (assoc opr zotero-handler-alist)) (assoc "q" zotero-handler-alist)
+  ;;               (assoc opr zotero-handler-alist)) 2) res))
+  ;;   (message "didn't find that file"))
+
+  (let ((opr (char-to-string (read-char
+                              ;; render menu text here
+                              (concat "[" (getattr res :title) "] found ... what do?\n"
+                                      (mapconcat #'(lambda (handler-list)
+                                                     (let ((hotkey      (elt handler-list 0))
+                                                           (description (elt handler-list 1))
+                                                           (handler-fn  (elt handler-list 2)))
+                                                       ;; ULGY BANDAIT HACK
+                                                       ;; replace "insert" with "copy to clipboard" if mark-active
+                                                       (format " %s :   %s"
+                                                               hotkey
+                                                               (if mark-active
+                                                                   (replace-regexp-in-string "insert \\(.*\\)" "copy \\1 to clipboard" description)
+                                                                 description)))
+                                                     ) zotero-handler-alist "\n")
+                                      )))))
+    (funcall
+     (elt (if (null (assoc opr zotero-handler-alist)) (assoc "q" zotero-handler-alist)
+            (assoc opr zotero-handler-alist)) 2) res))
+
+  )
+
 
 (defun zotero-find (&optional custom-query)
   (interactive)
