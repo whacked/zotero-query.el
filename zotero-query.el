@@ -12,8 +12,29 @@
   (shell-command-to-string
    (format "%s -separator '\t' '%s' '%s'" sql-sqlite-program zotero-db sql-query)))
 
+(defun sqlite3-quote-for-sh (str)
+  (replace-regexp-in-string "'" "'\\\\''" str))
+
+
+
+;; retrieve + cache type ids
+(setq zotero-typeID-alist
+      (mapcar* 'list
+               '(:attachment)
+               (split-string
+                (sqlite3-chomp (sqlite3-query (sqlite3-quote-for-sh "SELECT itemTypeID FROM itemTypes WHERE typeName IN ('attachment')")))
+                "\n")))
+(setq zotero-fieldID-alist
+      (mapcar* 'list
+               '(:date :title)
+               (split-string
+                (sqlite3-chomp (sqlite3-query (sqlite3-quote-for-sh "SELECT fieldID FROM fields WHERE fieldName IN ('date', 'title') ORDER BY fieldName")))
+                "\n")))
+
+(defun os-open-file-at-path (path)
+  (start-process "shell-process" "*Messages*" zotero-default-opener path))
+
 (let* ((argstring "mechanism")
-       (attachment-typeID (sqlite3-chomp (sqlite3-query "SELECT itemTypeID FROM itemTypes WHERE typeName = '\\''attachment'\\'' LIMIT 1")))
        (query-result (sqlite3-query 
                       (concat "SELECT "
                               "  it.itemID"
@@ -26,7 +47,7 @@
                               ", fields          AS fld"
                               " WHERE "
                               ;; do not match attachment type
-                              "     it.itemTypeID <> " (format "%s" attachment-typeID)
+                              "     it.itemTypeID <> " (getattr zotero-typeID-alist :attachment)
                               " AND it.itemID = itd.itemID"
                               " AND itdv.valueID = itd.valueID"
                               " AND itd.fieldID = fld.fieldID"
@@ -95,8 +116,7 @@
 
                 (if (file-exists-p item-path)
                     (progn
-                      item-path
-                      (start-process "shell-process" "*Messages*" zotero-default-opener item-path)
+                      (os-open-file-at-path item-path)
                       ))
                 )
               )
@@ -116,7 +136,7 @@
          ;; appears to be related to http://lists.gnu.org/archive/html/emacs-devel/2009-07/msg00279.html
          ;; you're better off replacing it with your exact program...
          ;; here we run xdg-mime to figure it out for *pdf* only. So this is not general!
-         (zotero-chomp
+         (sqlite3-chomp
           (shell-command-to-string
            (concat
             "grep Exec "
@@ -125,7 +145,7 @@
              ;; http://askubuntu.com/questions/159369/script-to-find-executable-based-on-extension-of-a-file
              ;; here we try to find the location of the mimetype opener that xdg-mime refers to.
              ;; it works for okular (Exec=okular %U %i -caption "%c"). NO IDEA if it works for others!
-             (delq nil (let ((mime-appname (zotero-chomp (replace-regexp-in-string
+             (delq nil (let ((mime-appname (sqlite3-chomp (replace-regexp-in-string
                                                            "kde4-" "kde4/"
                                                            (shell-command-to-string "xdg-mime query default application/pdf")))))
 
@@ -146,7 +166,7 @@
   (number-sequence 0 (1- excluded-end)))
 
 (defun sqlite3-destructure-line-to-alist (field-keyword-list query-result-line)
-  (let ((spl-query-result (split-string (zotero-chomp query-result-line) "\t")))
+  (let ((spl-query-result (split-string (sqlite3-chomp query-result-line) "\t")))
     (mapcar* 'list field-keyword-list
              (mapcar
               (lambda (idx)
@@ -156,7 +176,7 @@
 (defun zotero-query-to-alist (query-result)
   "builds alist out of a full zotero-query query record result"
   (if query-result
-      (let ((spl-query-result (split-string (zotero-chomp query-result) "\t")))
+      (let ((spl-query-result (split-string (sqlite3-chomp query-result) "\t")))
         `((:itemID                 ,(nth 0 spl-query-result))
           (:key                    ,(nth 1 spl-query-result))
           (:title                  ,(nth 2 spl-query-result))))))
@@ -179,7 +199,7 @@
 
 (defun zotero-read-query-filter-command ()
   (interactive)
-  (let* ((default-string (if mark-active (zotero-chomp (buffer-substring (mark) (point)))))
+  (let* ((default-string (if mark-active (sqlite3-chomp (buffer-substring (mark) (point)))))
          ;; prompt &optional initial keymap read history default
          (search-string (read-string (format "search string%s: "
                                              (if default-string
@@ -250,7 +270,7 @@ select
                                ", fields          AS fld"
                                " WHERE "
                                ;; do not match attachment type
-                               "     it.itemTypeID <> 14 " 
+                               "     it.itemTypeID <> " (getattr zotero-typeID-alist :attachment)
                                " AND it.itemID = itd.itemID"
                                " AND itdv.valueID = itd.valueID"
                                " AND itd.fieldID = fld.fieldID"
@@ -278,7 +298,7 @@ WHERE      it.itemTypeID <> 14
  AND itdv.value LIKE '%2014'
 ORDER BY     it.itemID DESC LIMIT 1
 
-SELECT fieldID FROM fields WHERE fieldName = 'title'; ;; 110
+SELECT fieldID FROM fields WHERE fieldName = (getattr zotero-fieldID-alist :title)
 SELECT fieldID FROM fields WHERE fieldName = 'date'; ;; 14
 
 
@@ -291,43 +311,52 @@ FROM
 , itemData        AS itd
 , itemDataValues  AS itdv
 WHERE
-    it.itemTypeID <> 14
+    it.itemTypeID <> 
 AND it.itemID = itd.itemID
-AND itd.fieldID = 14
+AND itd.fieldID = (getattr zotero-fieldID-alist :date)
 AND itd.valueID = itdv.valueID
 AND itdv.value LIKE '2012%'
 
-(let* ((sql-query (concat
+;; find entry from citekey
+(let* ((match-year "2012")
+       (match-auth "balestra")
+       (match-title "cess")
+       (sql-query (concat
+                   
+                   " SELECT"
+                   " it.itemID, it.key"
+                   " , itdv_titl.value"
+                   " , itdv_date.value"
+                   " , crtrd.lastName"
+                   ;; " , itd_crtr.orderIndex"
+                   " FROM"
+                   " items           AS it"
+                   " , itemData        AS itd_titl, itemDataValues  AS itdv_titl"
+                   " , itemData        AS itd_date, itemDataValues  AS itdv_date"
+                   " , itemCreators    AS itd_crtr, creators AS crtr, creatorData AS crtrd"
+                   " WHERE"
+                   " it.itemTypeID <> " (getattr zotero-typeID-alist :attachment)
+                   " AND it.itemID = itd_titl.itemID AND itd_titl.fieldID = " (getattr zotero-fieldID-alist :title)
+                   " AND itd_titl.valueID = itdv_titl.valueID"
+                   " AND it.itemID = itd_date.itemID AND itd_date.fieldID = " (getattr zotero-fieldID-alist :date)
+                   " AND itd_date.valueID = itdv_date.valueID"
+                   " AND it.itemID = itd_crtr.itemID AND itd_crtr.creatorID = crtr.creatorID"
+                   " AND crtr.creatorDataID = crtrd.creatorDataID"
+                   " AND itdv_titl.value LIKE '%" match-title "%'"
+                   " AND itdv_date.value LIKE '" match-year "%'"
+                   " AND LOWER(crtrd.lastName) LIKE '" match-auth "%'"
+                   " ORDER BY"
+                   " itd_crtr.orderIndex ASC"
+                   " LIMIT 1"
 
- SELECT
- it.itemID, it.key
- , itdv_titl.value
- , itdv_date.value
- , crtrd.lastName
- , itd_crtr.orderIndex
- FROM
- items           AS it
- , itemData        AS itd_titl, itemDataValues  AS itdv_titl
- , itemData        AS itd_date, itemDataValues  AS itdv_date
- , itemCreators    AS itd_crtr, creators AS crtr, creatorData AS crtrd
- WHERE
- it.itemTypeID <> 14
- AND it.itemID = itd_titl.itemID AND itd_titl.fieldID = 110
- AND itd_titl.valueID = itdv_titl.valueID
- AND it.itemID = itd_date.itemID AND itd_date.fieldID = 14
- AND itd_date.valueID = itdv_date.valueID
- AND it.itemID = itd_crtr.itemID AND itd_crtr.creatorID = crtr.creatorID
- AND crtr.creatorDataID = crtrd.creatorDataID
- AND itdv_titl.value LIKE '%cess%'
- AND itdv_date.value LIKE '2012%'
- -- AND LOWER(crtrd.lastName) LIKE 'balestra%'
- ORDER BY
- itd_crtr.orderIndex ASC
- LIMIT 1
-
-                  )))
+                   )))
+  
+  (sqlite3-destructure-line-to-alist
+   '(:itemID :key :title :date :author)
+   (sqlite3-chomp (sqlite3-query (sqlite3-quote-for-sh sql-query))))
 
  )
+
 
 
 (defun zotero-make-text-cache-path-from-citekey (citekey)
@@ -340,7 +369,7 @@ AND itdv.value LIKE '2012%'
 
 (defun zotero-make-citekey (zotero-res-alist)
   "return some kind of a unique citation key for BibTeX use"
-  (let* ((spl (split-string (zotero-chomp (getattr zotero-res-alist :author-sort)) "&"))
+  (let* ((spl (split-string (sqlite3-chomp (getattr zotero-res-alist :author-sort)) "&"))
          (first-author-lastname (first (split-string (first spl) ",")))
          (first-word-in-title (first (split-string (getattr zotero-res-alist :book-title) " "))))
     (concat
@@ -386,7 +415,7 @@ AND itdv.value LIKE '2012%'
                                    (cond ((string= "i" opr)
                                           ;; stupidly just insert the plain text result
                                           (mark-aware-copy-insert
-                                                   (zotero-chomp
+                                                   (sqlite3-chomp
                                                     (zotero-query (concat "SELECT "
                                                                            "idf.type, idf.val "
                                                                            "FROM identifiers AS idf "
@@ -396,7 +425,7 @@ AND itdv.value LIKE '2012%'
                                                    (substring (getattr res :book-pubdate) 0 10)))
                                          ((string= "a" opr)
                                           (mark-aware-copy-insert
-                                                   (zotero-chomp (getattr res :author-sort))))
+                                                   (sqlite3-chomp (getattr res :author-sort))))
                                          (t
                                           (deactivate-mark)
                                           (message "cancelled"))))
