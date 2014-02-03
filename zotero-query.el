@@ -259,67 +259,6 @@
         )
     (message "nothing at point!")))
 
- WHERE lower(b.author_sort) LIKE '\''%asdf%'\'' AND lower(b.title) LIKE '\''zxcv%'\''AND b.pubdate >= '\''2009-01-01'\'' AND b.pubdate <= '\''2009-12-31'\'' LIMIT 1
-select
-
-(insert                      (concat "SELECT "
-                               "  it.itemID"
-                               ", it.key"
-                               ", itdv.value"
-                               " FROM "
-                               "  items           AS it"
-                               ", itemData        AS itd"
-                               ", itemDataValues  AS itdv"
-                               ", fields          AS fld"
-                               " WHERE "
-                               ;; do not match attachment type
-                               "     it.itemTypeID <> " (getattr zotero-typeID-alist :attachment)
-                               " AND it.itemID = itd.itemID"
-                               " AND itdv.valueID = itd.valueID"
-                               " AND itd.fieldID = fld.fieldID"
-                               " AND itdv.value LIKE '\\''%%"
-                               "mechanism"
-                               "%%'\\''"
-                               " AND fld.fieldName = '\\''title'\\''"
-                               " ORDER BY "
-                               "    it.itemID DESC"
-                               " LIMIT 1"
-                               ))
-SELECT
-  it.itemID
-, it.key
-, itdv.value FROM   items           AS it
-, itemData        AS itd
-, itemDataValues  AS itdv
-, fields          AS fld
-WHERE      it.itemTypeID <> 14 
- AND it.itemID = itd.itemID
- AND itdv.valueID = itd.valueID
- AND itd.fieldID = fld.fieldID
- AND itdv.value LIKE '\''%%mechanism%%'\''
- AND fld.fieldName = '\''title'\''
- AND itdv.value LIKE '%2014'
-ORDER BY     it.itemID DESC LIMIT 1
-
-SELECT fieldID FROM fields WHERE fieldName = (getattr zotero-fieldID-alist :title)
-SELECT fieldID FROM fields WHERE fieldName = 'date'; ;; 14
-
-
-SELECT
-  it.itemID
-, it.key
-, itdv.value
-FROM
-  items           AS it
-, itemData        AS itd
-, itemDataValues  AS itdv
-WHERE
-    it.itemTypeID <> 
-AND it.itemID = itd.itemID
-AND itd.fieldID = (getattr zotero-fieldID-alist :date)
-AND itd.valueID = itdv.valueID
-AND itdv.value LIKE '2012%'
-
 (setq zotero-base-sql-select
       (concat
        "SELECT "
@@ -343,6 +282,8 @@ AND itdv.value LIKE '2012%'
        " AND crtr.creatorDataID = crtrd.creatorDataID"
        )
       )
+
+
 
 ;; find entry from citekey
 (let* ((match-year "2012")
