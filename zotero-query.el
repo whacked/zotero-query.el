@@ -34,6 +34,14 @@
 (defun os-open-file-at-path (path)
   (start-process "shell-process" "*Messages*" zotero-default-opener path))
 
+(defun zotero-make-attachment-path (atta-alist)
+  (concat
+   (file-name-as-directory
+    (concat (file-name-as-directory zotero-storage-dir)
+            (getattr atta-alist :key)))
+   ;; strip the "storage:" prefix
+   (substring (getattr atta-alist :path) 8)))
+
 (let* ((argstring "mechanism")
        (query-result (sqlite3-query 
                       (sqlite3-quote-for-sh
@@ -342,78 +350,120 @@
              (deactivate-mark))
     (insert content)))
 
+(defun zotero-find-attachment (res-alist)
+  (mapcar
+   (lambda (line)
+     (sqlite3-destructure-line-to-alist '(:key :mimeType :path) line))
+   (split-string
+    (sqlite3-chomp
+     (sqlite3-query
+      (concat
+       " SELECT"
+       "   itm.key"
+       ",  atta.mimeType"
+       ",  atta.path"
+       " FROM"
+       "  items AS itm "
+       ", itemAttachments AS atta "
+       " WHERE "
+       "      atta.sourceItemID = " (format "%s" (getattr res-alist :itemID))
+       " AND itm.itemID = atta.itemID"
+       )))
+    "\n")))
+
+
+
 ;; define the result handlers here in the form of (hotkey description handler-function)
 ;; where handler-function takes 1 alist argument containing the result record
-(setq zotero-handler-alist '(("o" "open"
-                               (lambda (res) (find-file-other-window (getattr res :file-path))))
-                              ("O" "open other frame"
-                               (lambda (res) (find-file-other-frame (getattr res :file-path))))
-                              ("v" "open with default viewer"
-                               (lambda (res)
-                                 (start-process "shell-process" "*Messages*" zotero-default-opener (getattr res :file-path))))
-                              ("x" "open with xournal"
-                               (lambda (res) (start-process "xournal-process" "*Messages*" "xournal"
-                                                            (let ((xoj-file-path (concat zotero-root-dir "/" (getattr res :book-dir) "/" (getattr res :book-name) ".xoj")))
-                                                              (if (file-exists-p xoj-file-path)
-                                                                  xoj-file-path
-                                                                (getattr res :file-path))))))
-                              ("c" "insert citekey"
-                               (lambda (res) (mark-aware-copy-insert (zotero-make-citekey res))))
-                              ("i" "get book information (SELECT IN NEXT MENU) and insert"
-                               (lambda (res)
-                                 (let ((opr (char-to-string (read-char
-                                                             ;; render menu text here
-                                                             (concat "What information do you want?\n"
-                                                                     "i : values in the book's `Ids` field (ISBN, DOI...)\n"
-                                                                     "d : pubdate\n"
-                                                                     "a : author list\n")))))
-                                   (cond ((string= "i" opr)
-                                          ;; stupidly just insert the plain text result
-                                          (mark-aware-copy-insert
-                                                   (sqlite3-chomp
-                                                    (zotero-query (concat "SELECT "
-                                                                           "idf.type, idf.val "
-                                                                           "FROM identifiers AS idf "
-                                                                           (format "WHERE book = %s" (getattr res :id)))))))
-                                         ((string= "d" opr)
-                                          (mark-aware-copy-insert
-                                                   (substring (getattr res :book-pubdate) 0 10)))
-                                         ((string= "a" opr)
-                                          (mark-aware-copy-insert
-                                                   (sqlite3-chomp (getattr res :author-sort))))
-                                         (t
-                                          (deactivate-mark)
-                                          (message "cancelled"))))
+(setq zotero-handler-alist '(
+                             ;; ("o" "open"
+                             ;;  (lambda (res) (find-file-other-window (getattr res :file-path))))
+                             ;; ("O" "open other frame"
+                             ;;  (lambda (res) (find-file-other-frame (getattr res :file-path))))
+                             ("v" "open with default viewer"
+                              (lambda (res)
+                                (deactivate-mark)
+                                (let ((atta-list (zotero-find-attachment res)))
+                                  (if atta-list
+                                      (let ((selection
+                                             (if (= 1 (length atta-list))
+                                                 1
+                                               (string-to-number
+                                                (char-to-string (read-char
+                                                                 ;; render menu text here
+                                                                 (concat "Found these attachments. Open which?\n"
+                                                                         (mapconcat
+                                                                          (lambda (n)
+                                                                            (format "%s. %s" n (getattr (nth (1- n) atta-list) :mimeType)))
+                                                                          (number-sequence 1 (length atta-list))
+                                                                          "\n"))))))))
+                                        (if (member selection (number-sequence 1 (length atta-list)))
+                                            (os-open-file-at-path (zotero-make-attachment-path (nth (1- selection) atta-list)))
+                                          (message "cancelled")))
+                                    (message "no attachments found for item")))))
+                             ;; ("x" "open with xournal"
+                             ;;  (lambda (res) (start-process "xournal-process" "*Messages*" "xournal"
+                             ;;                               (let ((xoj-file-path (concat zotero-root-dir "/" (getattr res :book-dir) "/" (getattr res :book-name) ".xoj")))
+                             ;;                                 (if (file-exists-p xoj-file-path)
+                             ;;                                     xoj-file-path
+                             ;;                                   (getattr res :file-path))))))
+                             ("c" "insert citekey"
+                              (lambda (res) (mark-aware-copy-insert (zotero-make-citekey res))))
+                             ("i" "get book information (SELECT IN NEXT MENU) and insert"
+                              (lambda (res)
+                                (let ((opr (char-to-string (read-char
+                                                            ;; render menu text here
+                                                            (concat "What information do you want?\n"
+                                                                    "i : values in the book's `Ids` field (ISBN, DOI...)\n"
+                                                                    "d : pubdate\n"
+                                                                    "a : author list\n")))))
+                                  (cond ((string= "i" opr)
+                                         ;; stupidly just insert the plain text result
+                                         (mark-aware-copy-insert
+                                          (sqlite3-chomp
+                                           (zotero-query (concat "SELECT "
+                                                                 "idf.type, idf.val "
+                                                                 "FROM identifiers AS idf "
+                                                                 (format "WHERE book = %s" (getattr res :id)))))))
+                                        ((string= "d" opr)
+                                         (mark-aware-copy-insert
+                                          (substring (getattr res :book-pubdate) 0 10)))
+                                        ((string= "a" opr)
+                                         (mark-aware-copy-insert
+                                          (sqlite3-chomp (getattr res :author-sort))))
+                                        (t
+                                         (deactivate-mark)
+                                         (message "cancelled"))))
 
-                                 ))
-                              ("p" "insert file path"
-                               (lambda (res) (mark-aware-copy-insert (getattr res :file-path))))
-                              ("t" "insert title"
-                               (lambda (res) (mark-aware-copy-insert (getattr res :book-title))))
-                              ("j" "insert entry json"
-                               (lambda (res) (mark-aware-copy-insert (json-encode res))))
-                              ("X" "open as plaintext in new buffer (via pdftotext)"
-                               (lambda (res)
-                                 (let* ((citekey (zotero-make-citekey res))
-                                        (cached-text-path (zotero-make-text-cache-path-from-citekey citekey))
-                                        (cached-note-path (zotero-make-note-cache-path-from-citekey citekey)))
-                                   (if (file-exists-p cached-text-path)
-                                       (progn
-                                         (find-file-other-window cached-text-path)
-                                         (when (file-exists-p cached-note-path)
-                                           (split-window-horizontally)
-                                           (find-file-other-window cached-note-path)
-                                           (org-open-link-from-string "[[note]]")
-                                           (forward-line 2)))
-                                     (let* ((pdftotext-out-buffer (get-buffer-create (format "pdftotext-extract-%s" (getattr res :id)))))
-                                       (set-buffer pdftotext-out-buffer)
-                                       (insert (shell-command-to-string (concat "pdftotext '" (getattr res :file-path) "' -")))
-                                       (switch-to-buffer-other-window pdftotext-out-buffer)
-                                       (beginning-of-buffer))))))
-                              ("q" "(or anything else) to cancel"
-                               (lambda (res)
-                                 (deactivate-mark)
-                                 (message "cancelled")))))
+                                ))
+                             ("p" "insert file path"
+                              (lambda (res) (mark-aware-copy-insert (getattr res :file-path))))
+                             ("t" "insert title"
+                              (lambda (res) (mark-aware-copy-insert (getattr res :title))))
+                             ;; ("j" "insert entry json"
+                             ;;  (lambda (res) (mark-aware-copy-insert (json-encode res))))
+                             ;; ("X" "open as plaintext in new buffer (via pdftotext)"
+                             ;;  (lambda (res)
+                             ;;    (let* ((citekey (zotero-make-citekey res))
+                             ;;           (cached-text-path (zotero-make-text-cache-path-from-citekey citekey))
+                             ;;           (cached-note-path (zotero-make-note-cache-path-from-citekey citekey)))
+                             ;;      (if (file-exists-p cached-text-path)
+                             ;;          (progn
+                             ;;            (find-file-other-window cached-text-path)
+                             ;;            (when (file-exists-p cached-note-path)
+                             ;;              (split-window-horizontally)
+                             ;;              (find-file-other-window cached-note-path)
+                             ;;              (org-open-link-from-string "[[note]]")
+                             ;;              (forward-line 2)))
+                             ;;        (let* ((pdftotext-out-buffer (get-buffer-create (format "pdftotext-extract-%s" (getattr res :id)))))
+                             ;;          (set-buffer pdftotext-out-buffer)
+                             ;;          (insert (shell-command-to-string (concat "pdftotext '" (getattr res :file-path) "' -")))
+                             ;;          (switch-to-buffer-other-window pdftotext-out-buffer)
+                             ;;          (beginning-of-buffer))))))
+                             ("q" "(or anything else) to cancel"
+                              (lambda (res)
+                                (deactivate-mark)
+                                (message "cancelled")))))
 
 (defun zotoer-handle-result (res)
   "res should be an alist returned by a destructured query"
@@ -439,7 +489,10 @@
   ;;   (message "didn't find that file"))
   )
 
-(let ((res (zotero-open-citekey "balestra2012process")))
+(let ((res (zotero-open-citekey
+            ;;"unturbe2007prob"
+            "park2013forget"
+                                )))
 
   ;; (if (file-exists-p (getattr res :file-path))
   ;;     (let ((opr (char-to-string (read-char
@@ -483,7 +536,6 @@
             (assoc opr zotero-handler-alist)) 2) res))
 
   )
-
 
 (defun zotero-find (&optional custom-query)
   (interactive)
