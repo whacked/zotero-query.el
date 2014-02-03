@@ -26,9 +26,9 @@
                 "\n")))
 (setq zotero-fieldID-alist
       (mapcar* 'list
-               '(:date :title)
+               '(:date :doi :extra :title)
                (split-string
-                (sqlite3-chomp (sqlite3-query (sqlite3-quote-for-sh "SELECT fieldID FROM fields WHERE fieldName IN ('date', 'title') ORDER BY fieldName")))
+                (sqlite3-chomp (sqlite3-query (sqlite3-quote-for-sh "SELECT fieldID FROM fields WHERE fieldName IN ('date', 'DOI', 'extra', 'title') ORDER BY LOWER(fieldName)")))
                 "\n")))
 
 (defun os-open-file-at-path (path)
@@ -127,7 +127,27 @@
 
 
 
-
+(let ((myid "5613"))
+  (sqlite3-query
+   (concat
+    " SELECT"
+    " fld.fieldName, itdv.value"
+    " FROM "
+    "  itemData AS itd"
+    ", itemDataValues  AS itdv"
+    ", fields AS fld"
+    " WHERE "
+    "     itd.itemID  = " myid
+    " AND itd.valueID = itdv.valueID"
+    " AND itd.fieldID IN "
+    "(" (getattr zotero-fieldID-alist :doi)
+    "," (getattr zotero-fieldID-alist :extra)
+    ")"
+    " AND fld.fieldID = itd.fieldID"
+    " ORDER BY LOWER(fld.fieldName)"
+    " LIMIT 2"
+    ))
+  )
 
 
 
@@ -300,9 +320,9 @@
 
 
 ;; find entry from citekey
-(let* ((match-year "2012")
-       (match-auth "balestra")
-       (match-title "cess")
+(let* ((match-year "2003")
+       (match-auth "voder")
+       (match-title "depr")
        (sql-query (concat
                    zotero-base-sql-select
                    " AND itdv_titl.value LIKE '%" match-title "%'"
@@ -316,7 +336,6 @@
   
   (zotero-query-to-alist
    (sqlite3-chomp (sqlite3-query (sqlite3-quote-for-sh sql-query))))
-
  )
 
 
@@ -411,31 +430,30 @@
                               (lambda (res) (mark-aware-copy-insert (zotero-make-citekey res))))
                              ("i" "get book information (SELECT IN NEXT MENU) and insert"
                               (lambda (res)
-                                (let ((opr (char-to-string (read-char
-                                                            ;; render menu text here
-                                                            (concat "What information do you want?\n"
-                                                                    "i : values in the book's `Ids` field (ISBN, DOI...)\n"
-                                                                    "d : pubdate\n"
-                                                                    "a : author list\n")))))
-                                  (cond ((string= "i" opr)
-                                         ;; stupidly just insert the plain text result
-                                         (mark-aware-copy-insert
-                                          (sqlite3-chomp
-                                           (zotero-query (concat "SELECT "
-                                                                 "idf.type, idf.val "
-                                                                 "FROM identifiers AS idf "
-                                                                 (format "WHERE book = %s" (getattr res :id)))))))
-                                        ((string= "d" opr)
-                                         (mark-aware-copy-insert
-                                          (substring (getattr res :book-pubdate) 0 10)))
-                                        ((string= "a" opr)
-                                         (mark-aware-copy-insert
-                                          (sqlite3-chomp (getattr res :author-sort))))
-                                        (t
-                                         (deactivate-mark)
-                                         (message "cancelled"))))
-
-                                ))
+                                (let ((identifier
+                                       (sqlite3-destructure-line-to-alist
+                                        '(:fieldName :value)
+                                        (sqlite3-query
+                                         (concat
+                                          " SELECT"
+                                          " fld.fieldName, itdv.value"
+                                          " FROM "
+                                          "  itemData AS itd"
+                                          ", itemDataValues  AS itdv"
+                                          ", fields AS fld"
+                                          " WHERE "
+                                          "     itd.itemID  = " (getattr res :itemID)
+                                          " AND itd.valueID = itdv.valueID"
+                                          " AND itd.fieldID IN "
+                                          "(" (getattr zotero-fieldID-alist :doi)
+                                          "," (getattr zotero-fieldID-alist :extra)
+                                          ")"
+                                          " AND fld.fieldID = itd.fieldID"
+                                          " ORDER BY LOWER(fld.fieldName)"
+                                          " LIMIT 1")))))
+                                  (if (getattr identifier :value)
+                                      (mark-aware-copy-insert (format "%s:%s" (downcase (getattr identifier :fieldName)) (getattr identifier :value)))
+                                    (message "no ID found for this item")))))
                              ("p" "insert file path"
                               (lambda (res) (mark-aware-copy-insert (getattr res :file-path))))
                              ("t" "insert title"
@@ -465,7 +483,7 @@
                                 (deactivate-mark)
                                 (message "cancelled")))))
 
-(defun zotoer-handle-result (res)
+(defun zotero-handle-result (res)
   "res should be an alist returned by a destructured query"
   ;; (if (file-exists-p (getattr res :file-path))
   ;;     (let ((opr (char-to-string (read-char
@@ -490,52 +508,52 @@
   )
 
 (let ((res (zotero-open-citekey
-            ;;"unturbe2007prob"
-            "park2013forget"
+            "unturbe2007prob"
                                 )))
 
-  ;; (if (file-exists-p (getattr res :file-path))
-  ;;     (let ((opr (char-to-string (read-char
-  ;;                                 ;; render menu text here
-  ;;                                 (concat "[" (getattr res :book-name) "] found ... what do?\n"
-  ;;                                         (mapconcat #'(lambda (handler-list)
-  ;;                                                        (let ((hotkey      (elt handler-list 0))
-  ;;                                                              (description (elt handler-list 1))
-  ;;                                                              (handler-fn  (elt handler-list 2)))
-  ;;                                                          ;; ULGY BANDAIT HACK
-  ;;                                                          ;; replace "insert" with "copy to clipboard" if mark-active
-  ;;                                                          (format " %s :   %s"
-  ;;                                                                  hotkey
-  ;;                                                                  (if mark-active
-  ;;                                                                      (replace-regexp-in-string "insert \\(.*\\)" "copy \\1 to clipboard" description)
-  ;;                                                                    description)))
-  ;;                                                        ) zotero-handler-alist "\n"))))))
-  ;;       (funcall
-  ;;        (elt (if (null (assoc opr zotero-handler-alist)) (assoc "q" zotero-handler-alist)
-  ;;               (assoc opr zotero-handler-alist)) 2) res))
-  ;;   (message "didn't find that file"))
+  (if (getattr res :key)
+   ;; (if (file-exists-p (getattr res :file-path))
+   ;;     (let ((opr (char-to-string (read-char
+   ;;                                 ;; render menu text here
+   ;;                                 (concat "[" (getattr res :book-name) "] found ... what do?\n"
+   ;;                                         (mapconcat #'(lambda (handler-list)
+   ;;                                                        (let ((hotkey      (elt handler-list 0))
+   ;;                                                              (description (elt handler-list 1))
+   ;;                                                              (handler-fn  (elt handler-list 2)))
+   ;;                                                          ;; ULGY BANDAIT HACK
+   ;;                                                          ;; replace "insert" with "copy to clipboard" if mark-active
+   ;;                                                          (format " %s :   %s"
+   ;;                                                                  hotkey
+   ;;                                                                  (if mark-active
+   ;;                                                                      (replace-regexp-in-string "insert \\(.*\\)" "copy \\1 to clipboard" description)
+   ;;                                                                    description)))
+   ;;                                                        ) zotero-handler-alist "\n"))))))
+   ;;       (funcall
+   ;;        (elt (if (null (assoc opr zotero-handler-alist)) (assoc "q" zotero-handler-alist)
+   ;;               (assoc opr zotero-handler-alist)) 2) res))
+   ;;   (message "didn't find that file"))
 
-  (let ((opr (char-to-string (read-char
-                              ;; render menu text here
-                              (concat "[" (getattr res :title) "] found ... what do?\n"
-                                      (mapconcat #'(lambda (handler-list)
-                                                     (let ((hotkey      (elt handler-list 0))
-                                                           (description (elt handler-list 1))
-                                                           (handler-fn  (elt handler-list 2)))
-                                                       ;; ULGY BANDAIT HACK
-                                                       ;; replace "insert" with "copy to clipboard" if mark-active
-                                                       (format " %s :   %s"
-                                                               hotkey
-                                                               (if mark-active
-                                                                   (replace-regexp-in-string "insert \\(.*\\)" "copy \\1 to clipboard" description)
-                                                                 description)))
-                                                     ) zotero-handler-alist "\n")
-                                      )))))
-    (funcall
-     (elt (if (null (assoc opr zotero-handler-alist)) (assoc "q" zotero-handler-alist)
-            (assoc opr zotero-handler-alist)) 2) res))
-
+   (let ((opr (char-to-string (read-char
+                               ;; render menu text here
+                               (concat "[" (getattr res :title) "] found ... what do?\n"
+                                       (mapconcat #'(lambda (handler-list)
+                                                      (let ((hotkey      (elt handler-list 0))
+                                                            (description (elt handler-list 1))
+                                                            (handler-fn  (elt handler-list 2)))
+                                                        ;; ULGY BANDAIT HACK
+                                                        ;; replace "insert" with "copy to clipboard" if mark-active
+                                                        (format " %s :   %s"
+                                                                hotkey
+                                                                (if mark-active
+                                                                    (replace-regexp-in-string "insert \\(.*\\)" "copy \\1 to clipboard" description)
+                                                                  description)))
+                                                      ) zotero-handler-alist "\n")
+                                       )))))
+     (funcall
+      (elt (if (null (assoc opr zotero-handler-alist)) (assoc "q" zotero-handler-alist)
+             (assoc opr zotero-handler-alist)) 2) res)))
   )
+
 
 (defun zotero-find (&optional custom-query)
   (interactive)
