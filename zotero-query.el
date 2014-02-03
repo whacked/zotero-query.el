@@ -106,9 +106,7 @@
                 ;;       (os-open-file-at-path item-path)
                 ;;       ))
                 (getattr res :title)
-                (sqlite3-destructure-line-to-alist
-                 '(:itemID :key :value :date :author)
-                 query-result)
+                (zotero-query-to-alist query-result)
                 
                 )
               )
@@ -176,13 +174,11 @@
                 (nth idx spl-query-result))
               (number-sequence-0 (length field-keyword-list))))))
 
-(defun zotero-query-to-alist (query-result)
+(defun zotero-query-to-alist (query-result-line)
   "builds alist out of a full zotero-query query record result"
-  (if query-result
-      (let ((spl-query-result (split-string (sqlite3-chomp query-result) "\t")))
-        `((:itemID                 ,(nth 0 spl-query-result))
-          (:key                    ,(nth 1 spl-query-result))
-          (:title                  ,(nth 2 spl-query-result))))))
+  (sqlite3-destructure-line-to-alist
+   '(:itemID :key :value :date :author)
+   query-result-line))
 
 (defun zotero-build-default-query (whereclause &optional limit)
   (concat "SELECT "
@@ -310,8 +306,7 @@
 
                    )))
   
-  (sqlite3-destructure-line-to-alist
-   '(:itemID :key :title :date :author)
+  (zotero-query-to-alist
    (sqlite3-chomp (sqlite3-query (sqlite3-quote-for-sh sql-query))))
 
  )
