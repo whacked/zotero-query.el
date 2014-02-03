@@ -36,29 +36,16 @@
 
 (let* ((argstring "mechanism")
        (query-result (sqlite3-query 
-                      (concat "SELECT "
-                              "  it.itemID"
-                              ", it.key"
-                              ", itdv.value"
-                              " FROM "
-                              "  items           AS it"
-                              ", itemData        AS itd"
-                              ", itemDataValues  AS itdv"
-                              ", fields          AS fld"
-                              " WHERE "
-                              ;; do not match attachment type
-                              "     it.itemTypeID <> " (getattr zotero-typeID-alist :attachment)
-                              " AND it.itemID = itd.itemID"
-                              " AND itdv.valueID = itd.valueID"
-                              " AND itd.fieldID = fld.fieldID"
-                              " AND itdv.value LIKE '\\''%%"
-                              (format "%s" (downcase argstring))
-                              "%%'\\''"
-                              " AND fld.fieldName = '\\''title'\\''"
-                              " ORDER BY "
-                              "    it.itemID DESC"
-                              " LIMIT 1"
-                              ))))
+                      (sqlite3-quote-for-sh
+                       (concat zotero-base-sql-select
+                               " AND itdv_titl.value LIKE " (format "'%%%s%%'" (downcase argstring))
+                               " AND it.itemID = itd_crtr.itemID AND itd_crtr.creatorID = crtr.creatorID AND itd_crtr.orderIndex = 0"
+                               " ORDER BY "
+                               "    it.itemID DESC"
+                               " LIMIT 1"
+                               ))
+
+                      )))
   (if (= 0 (length query-result))
       (message "nothing found.")
     (let ((res (zotero-query-to-alist query-result)))
@@ -114,17 +101,33 @@
                        ;; strip the "storage:" prefix
                        (substring (getattr first-item :path) 8))))
 
-                (if (file-exists-p item-path)
-                    (progn
-                      (os-open-file-at-path item-path)
-                      ))
+                ;; (if (file-exists-p item-path)
+                ;;     (progn
+                ;;       (os-open-file-at-path item-path)
+                ;;       ))
+                (getattr res :title)
+                (sqlite3-destructure-line-to-alist
+                 '(:itemID :key :value :date :author)
+                 query-result)
+                
                 )
               )
-            )
+          )
         )
       )
     )
   )
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -317,31 +320,36 @@ AND itd.fieldID = (getattr zotero-fieldID-alist :date)
 AND itd.valueID = itdv.valueID
 AND itdv.value LIKE '2012%'
 
+(setq zotero-base-sql-select
+      (concat
+       "SELECT "
+       "  it.itemID, it.key"
+       ", itdv_titl.value"
+       ", itdv_date.value"
+       " , crtrd.lastName"
+       " FROM "
+       "  items           AS it"
+       ", itemData        AS itd_titl, itemDataValues  AS itdv_titl"
+       ", itemData        AS itd_date, itemDataValues  AS itdv_date"
+       ", itemCreators    AS itd_crtr, creators AS crtr, creatorData AS crtrd"
+       " WHERE"
+       ;; do not match attachment type
+       " it.itemTypeID <> " (getattr zotero-typeID-alist :attachment)
+       " AND it.itemID = itd_titl.itemID AND itd_titl.fieldID = " (getattr zotero-fieldID-alist :title)
+       " AND itd_titl.valueID = itdv_titl.valueID"
+       " AND it.itemID = itd_date.itemID AND itd_date.fieldID = " (getattr zotero-fieldID-alist :date)
+       " AND itd_date.valueID = itdv_date.valueID"
+       " AND it.itemID = itd_crtr.itemID AND itd_crtr.creatorID = crtr.creatorID"
+       " AND crtr.creatorDataID = crtrd.creatorDataID"
+       )
+      )
+
 ;; find entry from citekey
 (let* ((match-year "2012")
        (match-auth "balestra")
        (match-title "cess")
        (sql-query (concat
-                   
-                   " SELECT"
-                   " it.itemID, it.key"
-                   " , itdv_titl.value"
-                   " , itdv_date.value"
-                   " , crtrd.lastName"
-                   ;; " , itd_crtr.orderIndex"
-                   " FROM"
-                   " items           AS it"
-                   " , itemData        AS itd_titl, itemDataValues  AS itdv_titl"
-                   " , itemData        AS itd_date, itemDataValues  AS itdv_date"
-                   " , itemCreators    AS itd_crtr, creators AS crtr, creatorData AS crtrd"
-                   " WHERE"
-                   " it.itemTypeID <> " (getattr zotero-typeID-alist :attachment)
-                   " AND it.itemID = itd_titl.itemID AND itd_titl.fieldID = " (getattr zotero-fieldID-alist :title)
-                   " AND itd_titl.valueID = itdv_titl.valueID"
-                   " AND it.itemID = itd_date.itemID AND itd_date.fieldID = " (getattr zotero-fieldID-alist :date)
-                   " AND itd_date.valueID = itdv_date.valueID"
-                   " AND it.itemID = itd_crtr.itemID AND itd_crtr.creatorID = crtr.creatorID"
-                   " AND crtr.creatorDataID = crtrd.creatorDataID"
+                   zotero-base-sql-select
                    " AND itdv_titl.value LIKE '%" match-title "%'"
                    " AND itdv_date.value LIKE '" match-year "%'"
                    " AND LOWER(crtrd.lastName) LIKE '" match-auth "%'"
