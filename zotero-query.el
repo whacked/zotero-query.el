@@ -287,10 +287,11 @@
           ;; (mark-word)
           ;; (zotero-find (zotero-build-default-query where-string))
           
-          (zotero-query-to-alist
-           (sqlite3-query (sqlite3-quote-for-sh (concat
-                                                 zotero-base-sql-select
-                                                 where-string)))))
+          (zotero-handle-result
+           (zotero-query-to-alist
+            (sqlite3-query (sqlite3-quote-for-sh (concat
+                                                  zotero-base-sql-select
+                                                  where-string))))))
         (message "nothing at point!"))))
 
 (setq zotero-base-sql-select
@@ -485,32 +486,6 @@
 
 (defun zotero-handle-result (res)
   "res should be an alist returned by a destructured query"
-  ;; (if (file-exists-p (getattr res :file-path))
-  ;;     (let ((opr (char-to-string (read-char
-  ;;                                 ;; render menu text here
-  ;;                                 (concat "[" (getattr res :book-name) "] found ... what do?\n"
-  ;;                                         (mapconcat #'(lambda (handler-list)
-  ;;                                                        (let ((hotkey      (elt handler-list 0))
-  ;;                                                              (description (elt handler-list 1))
-  ;;                                                              (handler-fn  (elt handler-list 2)))
-  ;;                                                          ;; ULGY BANDAIT HACK
-  ;;                                                          ;; replace "insert" with "copy to clipboard" if mark-active
-  ;;                                                          (format " %s :   %s"
-  ;;                                                                  hotkey
-  ;;                                                                  (if mark-active
-  ;;                                                                      (replace-regexp-in-string "insert \\(.*\\)" "copy \\1 to clipboard" description)
-  ;;                                                                    description)))
-  ;;                                                        ) zotero-handler-alist "\n"))))))
-  ;;       (funcall
-  ;;        (elt (if (null (assoc opr zotero-handler-alist)) (assoc "q" zotero-handler-alist)
-  ;;               (assoc opr zotero-handler-alist)) 2) res))
-  ;;   (message "didn't find that file"))
-  )
-
-(let ((res (zotero-open-citekey
-            "unturbe2007prob"
-                                )))
-
   (if (getattr res :key)
    ;; (if (file-exists-p (getattr res :file-path))
    ;;     (let ((opr (char-to-string (read-char
@@ -551,9 +526,7 @@
                                        )))))
      (funcall
       (elt (if (null (assoc opr zotero-handler-alist)) (assoc "q" zotero-handler-alist)
-             (assoc opr zotero-handler-alist)) 2) res)))
-  )
-
+             (assoc opr zotero-handler-alist)) 2) res))))
 
 (defun zotero-find (&optional custom-query)
   (interactive)
