@@ -219,6 +219,7 @@
         (message "supposed to insert this!")
         ))))
 
+;; FIXME the <= part looks wrong. should be next year's 01-01
 (defun zotero-open-citekey ()
   (interactive)
   (if (word-at-point)
@@ -229,9 +230,105 @@
               ;; capture first word in title       into group \3
               "\\b\\(.+?\\)\\(?:etal\\)?\\([[:digit:]]\\\{4\\\}\\)\\(.*\\)\\b"
               "WHERE lower(b.author_sort) LIKE '\\\\''%\\1%'\\\\'' AND lower(b.title) LIKE '\\\\''\\3%'\\\\''AND b.pubdate >= '\\\\''\\2-01-01'\\\\'' AND b.pubdate <= '\\\\''\\2-12-31'\\\\'' LIMIT 1" (word-at-point))))
-        (mark-word)
-        (zotero-find (zotero-build-default-query where-string)))
+        ;; (mark-word)
+        ;; (zotero-find (zotero-build-default-query where-string))
+        (insert where-string)
+        )
     (message "nothing at point!")))
+
+ WHERE lower(b.author_sort) LIKE '\''%asdf%'\'' AND lower(b.title) LIKE '\''zxcv%'\''AND b.pubdate >= '\''2009-01-01'\'' AND b.pubdate <= '\''2009-12-31'\'' LIMIT 1
+select
+
+(insert                      (concat "SELECT "
+                               "  it.itemID"
+                               ", it.key"
+                               ", itdv.value"
+                               " FROM "
+                               "  items           AS it"
+                               ", itemData        AS itd"
+                               ", itemDataValues  AS itdv"
+                               ", fields          AS fld"
+                               " WHERE "
+                               ;; do not match attachment type
+                               "     it.itemTypeID <> 14 " 
+                               " AND it.itemID = itd.itemID"
+                               " AND itdv.valueID = itd.valueID"
+                               " AND itd.fieldID = fld.fieldID"
+                               " AND itdv.value LIKE '\\''%%"
+                               "mechanism"
+                               "%%'\\''"
+                               " AND fld.fieldName = '\\''title'\\''"
+                               " ORDER BY "
+                               "    it.itemID DESC"
+                               " LIMIT 1"
+                               ))
+SELECT
+  it.itemID
+, it.key
+, itdv.value FROM   items           AS it
+, itemData        AS itd
+, itemDataValues  AS itdv
+, fields          AS fld
+WHERE      it.itemTypeID <> 14 
+ AND it.itemID = itd.itemID
+ AND itdv.valueID = itd.valueID
+ AND itd.fieldID = fld.fieldID
+ AND itdv.value LIKE '\''%%mechanism%%'\''
+ AND fld.fieldName = '\''title'\''
+ AND itdv.value LIKE '%2014'
+ORDER BY     it.itemID DESC LIMIT 1
+
+SELECT fieldID FROM fields WHERE fieldName = 'title'; ;; 110
+SELECT fieldID FROM fields WHERE fieldName = 'date'; ;; 14
+
+
+SELECT
+  it.itemID
+, it.key
+, itdv.value
+FROM
+  items           AS it
+, itemData        AS itd
+, itemDataValues  AS itdv
+WHERE
+    it.itemTypeID <> 14
+AND it.itemID = itd.itemID
+AND itd.fieldID = 14
+AND itd.valueID = itdv.valueID
+AND itdv.value LIKE '2012%'
+
+(let* ((sql-query (concat
+
+ SELECT
+ it.itemID, it.key
+ , itdv_titl.value
+ , itdv_date.value
+ , crtrd.lastName
+ , itd_crtr.orderIndex
+ FROM
+ items           AS it
+ , itemData        AS itd_titl, itemDataValues  AS itdv_titl
+ , itemData        AS itd_date, itemDataValues  AS itdv_date
+ , itemCreators    AS itd_crtr, creators AS crtr, creatorData AS crtrd
+ WHERE
+ it.itemTypeID <> 14
+ AND it.itemID = itd_titl.itemID AND itd_titl.fieldID = 110
+ AND itd_titl.valueID = itdv_titl.valueID
+ AND it.itemID = itd_date.itemID AND itd_date.fieldID = 14
+ AND itd_date.valueID = itdv_date.valueID
+ AND it.itemID = itd_crtr.itemID AND itd_crtr.creatorID = crtr.creatorID
+ AND crtr.creatorDataID = crtrd.creatorDataID
+ AND itdv_titl.value LIKE '%cess%'
+ AND itdv_date.value LIKE '2012%'
+ -- AND LOWER(crtrd.lastName) LIKE 'balestra%'
+ ORDER BY
+ itd_crtr.orderIndex ASC
+ LIMIT 1
+
+                  )))
+
+ )
+
 
 (defun zotero-make-text-cache-path-from-citekey (citekey)
   (concat zotero-text-cache-dir "/" citekey "/text.org"))
