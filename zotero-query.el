@@ -64,7 +64,7 @@
       ;; look for files
       (let ((match-atta-list (mapcar
                               (lambda (line)
-                                (sqlite3-destruct-line-to-alist '(:key :mimeType :path) line))
+                                (sqlite3-destructure-line-to-alist '(:key :mimeType :path) line))
                               (split-string
                                (sqlite3-chomp
                                 (sqlite3-query
@@ -145,7 +145,7 @@
 (defun number-sequence-0 (excluded-end)
   (number-sequence 0 (1- excluded-end)))
 
-(defun sqlite3-destruct-line-to-alist (field-keyword-list query-result-line)
+(defun sqlite3-destructure-line-to-alist (field-keyword-list query-result-line)
   (let ((spl-query-result (split-string (zotero-chomp query-result-line) "\t")))
     (mapcar* 'list field-keyword-list
              (mapcar
