@@ -13,10 +13,24 @@
                 "zotero"))
     (message "UH OH DUNNO")))
 
-(defvar zotero-db (concat zotero-root-dir "/zotero.sqlite"))
-
 (defvar zotero-storage-dir (concat (file-name-as-directory zotero-root-dir) "storage"))
-;; (setq zotero-db "/Volumes/ramdisk/zotero-query.el/zotero.sqlite")
+
+(defvar zotero-orig-db (concat zotero-root-dir "/zotero.sqlite"))
+
+;; create a temp file to work from, since original may be locked
+(defvar zotero-temp-db (make-temp-file "zotero." nil ".sqlite"))
+(defun zotero-check-temp-db-and-update ()
+  "check if zotero temp db is older than current zotero db, and if so, re-copy it"
+  (interactive)
+  (if (or
+       (string< (mapconcat 'number-to-string (nth 5 (file-attributes zotero-temp-db)) "")
+                (mapconcat 'number-to-string (nth 5 (file-attributes zotero-orig-db)) ""))
+       (not (equal (nth 7 (file-attributes zotero-orig-db))
+                   (nth 7 (file-attributes zotero-temp-db)))))
+      (progn
+        (copy-file zotero-orig-db zotero-temp-db t)
+        (message "zotero temp db updated"))
+    (message "zotero temp db already up to date.")))
 
 (defun sqlite3-chomp (s)
   (replace-regexp-in-string "[\s\n]+$" "" s))
@@ -24,12 +38,10 @@
 (defun sqlite3-query (sql-query)
   (interactive)
   (shell-command-to-string
-   (format "%s -separator '\t' '%s' '%s'" sql-sqlite-program zotero-db sql-query)))
+   (format "%s -separator '\t' '%s' '%s'" sql-sqlite-program zotero-temp-db sql-query)))
 
 (defun sqlite3-quote-for-sh (str)
   (replace-regexp-in-string "'" "'\\\\''" str))
-
-
 
 ;; retrieve + cache type ids
 (setq zotero-typeID-alist
@@ -47,6 +59,9 @@
 
 (defun os-open-file-at-path (path)
   (start-process "shell-process" "*Messages*" zotero-default-opener path))
+
+(defun getattr (my-alist key)
+  (cadr (assoc key my-alist)))
 
 (defun zotero-make-attachment-path (atta-alist)
   (concat
@@ -359,9 +374,6 @@
   (concat zotero-text-cache-dir "/" citekey "/text.org"))
 (defun zotero-make-note-cache-path-from-citekey (citekey)
   (concat zotero-text-cache-dir "/" citekey "/note.org"))
-
-(defun getattr (my-alist key)
-  (cadr (assoc key my-alist)))
 
 (defun zotero-make-citekey (zotero-res-alist)
   "return some kind of a unique citation key for BibTeX use"
