@@ -48,3 +48,26 @@ zotero = libzotero.LibZotero(ZOTERO_FOLDER_PATH)
 
 if __name__ == '__main__':
 
+    if len(sys.argv) < 2:
+        sys.exit()
+
+    import json
+    import base64
+
+    output_klist = (
+        'id', 'key',
+        'authors', 'publication',
+        'tags',
+        'simple_format()',
+        'fulltext',
+    )
+    query_string = sys.argv[1]
+    res = zotero.search(query_string)
+    json_str = (json.dumps([
+        {k: (k.endswith('()')
+             and getattr(it, k[:-2])()
+             or getattr(it, k))
+        for k in output_klist}
+        for it in res
+    ]))
+    print(base64.b64encode(bytes(json_str, 'UTF-8')))
