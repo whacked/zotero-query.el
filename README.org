@@ -6,7 +6,7 @@
 
 ** requirements
 
-   - @smatnot's [[https://github.com/smathot/qnotero][Qnotero]]
+   - @smathot's [[https://github.com/smathot/qnotero][Qnotero]]
 
 ** description
 
