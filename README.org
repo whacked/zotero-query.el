@@ -1,7 +1,5 @@
 * elisp wrappers for querying against zotero.sqlite
 
-  in the fashion of https://github.com/whacked/calibre-mode; will probably merge at some point
-
   goal is to provide convenience functions / keys to query the zotero db + open files, without having to have a running zotero instance
 
 ** requirements
@@ -20,6 +18,40 @@
 *** Zotero database location
     
     assumed to be within a $HOME/[Mm]ozilla/[Ff]irefox/Profiles/*.default/zotero
+
+** example elisp query
+
+   more functionality to be added later. also, the =devel= branch's elisp is completely separate
+
+   #+BEGIN_SRC emacs-lisp :results value
+     (require 'json)
+     (let ((item-list
+            (let ((query "NiPype")
+                  (json-object-type 'plist))
+              (json-read-from-string
+               (base64-decode-string
+                (first
+                 (last
+                  (split-string
+                   (calibre-chomp
+                    (shell-command-to-string
+                     (format "python3 qnotero_util.py '%s'" query)))
+                   "\n"))))))))
+       
+       (plist-get
+        (elt item-list 0)
+        :title))
+
+   #+END_SRC
+
+   #+RESULTS:
+   : Nipype: A Flexible, Lightweight and Extensible Neuroimaging Data Processing Framework in Python
+
+** devel branch
+
+   contains an older, separate querying method directly against the sqlite db in the fashion of https://github.com/whacked/calibre-mode;
+
+   *eventually these repos will probably merge*
 
 ** see also
 
