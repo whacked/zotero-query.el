@@ -70,4 +70,4 @@ if __name__ == '__main__':
         for k in output_klist}
         for it in res
     ]))
-    print(base64.b64encode(bytes(json_str, 'UTF-8')))
+    print(base64.b64encode(bytes(json_str, 'utf-8')).decode('utf-8'))
