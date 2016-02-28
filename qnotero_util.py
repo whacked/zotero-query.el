@@ -57,16 +57,17 @@ if __name__ == '__main__':
     output_klist = (
         'id', 'key',
         'authors', 'publication',
-        'tags',
+        'title', 'tags',
         'simple_format()',
         'fulltext',
     )
     query_string = sys.argv[1]
     res = zotero.search(query_string)
     json_str = (json.dumps([
-        {k: (k.endswith('()')
-             and getattr(it, k[:-2])()
-             or getattr(it, k))
+        {(k.endswith('()') and k[:-2] or k):
+         (k.endswith('()')
+          and getattr(it, k[:-2])()
+         or getattr(it, k))
         for k in output_klist}
         for it in res
     ]))
