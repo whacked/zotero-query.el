@@ -4,15 +4,23 @@
 
   goal is to provide convenience functions / keys to query the zotero db + open files, without having to have a running zotero instance
 
-** issues
+** requirements
 
-*** TODO figure out where the profile directory is
+   - @smatnot's [[https://github.com/smathot/qnotero][Qnotero]]
 
-*** TODO figure out how to deal with sqlite db lock
+** description
+
+   driver script is =qnotero_util.py=; it makes these assumptions:
+   
+*** Qnotero library
+
+    currently =qnotero= is an import in the python utility script;
+    it is expected to reside in =/opt/qnotero=
+
+*** Zotero database location
+    
+    assumed to be within a $HOME/[Mm]ozilla/[Ff]irefox/Profiles/*.default/zotero
 
 ** see also
 
-   - https://bitbucket.org/egh/zotero-plain/
-     this one requires a running zotero service... also still in flux.
-   - https://github.com/vitoshka/zotelo
-     use case too specific for me right now
+   - https://github.com/vitoshka/zotelo (requires MozRepl)
