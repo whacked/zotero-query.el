@@ -190,6 +190,8 @@
 ;; PDF annotation interaction code
 ;; NOTE this isn't zotero-specific, so this will likely be moved in the future
 
+;; pdf annotation code ref http://matt.hackinghistory.ca/2015/11/11/note-taking-with-pdf-tools/
+
 ;; temp vars
 (defvar pdf-annot-filepath)
 (defvar pdf-annot-buf)
