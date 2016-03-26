@@ -21,6 +21,16 @@
     
     assumed to be within a $HOME/[Mm]ozilla/[Ff]irefox/[Pp]rofiles/*.default/zotero
 
+** current functionality
+
+   *LIKELY TO CHANGE!*
+
+   - =M-x zotero-query= to search against db
+   - insert org-pdfview link or other information from result selection
+   - =M-x pdf-annot-trigger= on =pdfview= link
+     - insert text extraction of annotations in pdf
+     - select specific text annotation from =helm= menu + insert
+   
 ** example elisp query
 
    more functionality to be added later. also, the =devel= branch's elisp is completely separate

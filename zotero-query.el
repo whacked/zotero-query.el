@@ -10,7 +10,6 @@
       (file-name-directory load-file-name)
     (file-name-directory (buffer-file-name))))
 
-;; TODO change to defvar
 (defvar zotero-result-buf)
 (defvar zotero-output-buf)
 
@@ -186,3 +185,167 @@
                   "\n"))))))))
       (zotero-choose-result item-list))))
 
+
+
+;; PDF annotation interaction code
+;; NOTE this isn't zotero-specific, so this will likely be moved in the future
+
+;; temp vars
+(defvar pdf-annot-filepath)
+(defvar pdf-annot-buf)
+
+(defun format-org-quote (quote-text &optional linktext)
+  (format "\n#+BEGIN_QUOTE\n%s\n%s#+END_QUOTE\n"
+          quote-text
+          (if linktext
+              (format "    -- %s\n" linktext)
+            "")))
+
+(defun format-org-pdfview-link (filepath &optional text pagenum height)
+  (format "[[pdfview:%s%s%s]%s]"
+          filepath
+          (if pagenum (format "::%d" pagenum) "")
+          (if height (format "++%.3f" height) "")
+          (if text (format "[%s]" text) "")))
+
+(defun pdf-annot-insert-all ()
+  (interactive)
+  (save-excursion
+    (forward-line)
+    (let ((counter 0)
+          (ink-page-set '()))
+      (mapc
+       (lambda (annot) ;; traverse all annotations
+         (let ((annot-type (assoc-default 'type annot))
+               (page (assoc-default 'page annot)))
+           (cond ((eq 'highlight annot-type)
+                  (let* (;; use pdf-annot-edges-to-region to get correct boundaries of highlight
+                         (real-edges (pdf-annot-edges-to-region
+                                      (pdf-annot-get annot 'markup-edges)))
+                         (text (or (assoc-default 'subject annot)
+                                   (replace-regexp-in-string
+                                    "\n" " "
+                                    (pdf-info-gettext page real-edges nil pdf-annot-filepath)) ))
+
+                         (comment (assoc-default 'contents annot))
+                         
+                         (height (nth 1 real-edges)) ;; distance down the page
+                         )
+                    (insert (format-org-quote
+                             text
+                             (format-org-pdfview-link pdf-annot-filepath "source" page height)))
+                    (when (and comment (< 0 (length comment)))
+                      (insert (format "\n# COMMENT:\n  %s\n" comment)))
+                    (setq counter (1+ counter))
+                    ))
+                 ((eq 'text annot-type)
+                  (let ((comment (assoc-default 'contents annot))
+                        (edges (pdf-annot-get annot 'edges)))
+                    (insert (format
+                             "\n#+BEGIN_COMMENT\n%s\n#+END_COMMENT\n# COMMENT:\n  referring to %s:\n  %s\n"
+                             (pdf-info-gettext page edges nil pdf-annot-filepath)
+                             (format-org-pdfview-link pdf-annot-filepath "in text" page (nth 1 edges))
+                             comment))))
+                 ((eq 'ink annot-type)
+                  ;; (insert (format "%s" annot))
+                  (add-to-list 'ink-page-set page))
+                 (t
+                  (progn
+                    (message (format "unhandled type: %s" annot-type)))))))
+       pdf-annot-buf)
+      (message (format "%s" ink-page-set))
+      ;; insert the pages with inking
+      (dolist (page ink-page-set)
+        (insert
+         (concat "\n# - "
+                 (format-org-pdfview-link pdf-annot-filepath
+                                          (format "freehand note on page %s" page)
+                                          page)
+                 "\n")))
+      (message (format "%s items" counter)))))
+
+(defhydra pdf-annot-menu (:color blue)
+  "do what?"
+  
+  ("a" pdf-annot-insert-all
+   "insert all"
+   :exit t)
+  
+  ("i" (lambda ()
+         (interactive)
+         (let ((match
+                (helm-comp-read
+                 "match: "
+                 (let ((helm-completion-list))
+                   (mapc
+                    (lambda (annot) ;; traverse all annotations
+                      (let ((annot-type (assoc-default 'type annot))
+                            (page (assoc-default 'page annot)))
+                        (cond ((eq 'highlight annot-type)
+                               (let* ( ;; use pdf-annot-edges-to-region to get correct boundaries of highlight
+                                      (real-edges (pdf-annot-edges-to-region
+                                                   (pdf-annot-get annot 'markup-edges)))
+                                      (text (or (assoc-default 'subject annot)
+                                                (replace-regexp-in-string
+                                                 "\n" " "
+                                                 (pdf-info-gettext page real-edges nil pdf-annot-filepath)) ))
+
+                                      (comment (assoc-default 'contents annot))
+                                      
+                                      (height (nth 1 real-edges)) ;; distance down the page
+                                      
+                                      (full-string (format
+                                                    "%s (%s) %s\n" text
+                                                    (format-org-pdfview-link pdf-annot-filepath "source" page height)
+                                                    (if (and comment (< 0 (length comment)))
+                                                        (format "\n# COMMENT:\n  %s" comment)
+                                                      ""))))
+                                 (setq helm-completion-list
+                                       (cons (cons text full-string) helm-completion-list))))
+                              ((eq 'text annot-type)
+                               (let ((comment (assoc-default 'contents annot))
+                                     (edges (pdf-annot-get annot 'edges)))
+                                 (setq helm-completion-list
+                                       (cons
+                                        (cons (format "COMMENT: %s" comment)
+                                              (format "# COMMENT %s:\n  %s\n"
+                                                      (format-org-pdfview-link
+                                                       pdf-annot-filepath
+                                                       "in text"
+                                                       page
+                                                       (nth 1 edges))
+                                                      comment))
+                                        
+                                        helm-completion-list))))
+                              ((eq 'ink annot-type)
+                               (message "skipping ink item..."))
+                              (t
+                               (message (format "unhandled type: %s" annot-type))))))
+                    pdf-annot-buf)
+                   helm-completion-list))))
+           ;; this seems to be never false
+           (when match
+             (forward-line)
+             (save-excursion
+               (insert match)))))
+   "insert one"
+   :exit t)
+
+  ("q" nil "cancel"))
+
+(defun pdf-annot-trigger ()
+  (interactive)
+  (let* ((ctx (org-element-context))
+         (filepath (org-element-property :path ctx)))
+    (if (not (and (eq 'link (first ctx))
+                  ;; for pdfview only
+                  ;; (eq 'pdfview (org-element-property :type ctx))
+                  (string-match "\\.pdf\\b" (or filepath ""))))
+        (message "not a pdf link")
+      (progn
+        (setq pdf-annot-filepath filepath)
+        (setq pdf-annot-buf
+              ;; get and sort all annots
+              (sort (pdf-info-getannots nil filepath)
+                    'pdf-annot-compare-annotations))
+        (pdf-annot-menu/body)))))
