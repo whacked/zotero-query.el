@@ -18,7 +18,8 @@
   "what to do with string?"
   ("i" (lambda ()
          (interactive)
-         (insert (format "%s" zotero-output-buf)))
+         (save-excursion
+           (insert (format "%s" zotero-output-buf))))
    "insert at point"
    :exit t)
   
@@ -53,6 +54,14 @@
          (org-open-file (plist-get zotero-result-buf :fulltext)))
    "open EXTERNALLY" :exit t)
   
+  ("l" (lambda ()
+         (interactive)
+         (save-excursion
+           (insert (format "[[pdfview:%s][%s]]"
+                           (plist-get zotero-result-buf :fulltext)
+                           (plist-get zotero-result-buf :title)))))
+   "insert org-pdfview link at point" :exit t)
+
   ("i" (lambda ()
          (interactive)
          (set-zotero-active-result :id)
