@@ -11,28 +11,29 @@
     (file-name-directory (buffer-file-name))))
 
 ;; TODO change to defvar
-(defvar zotero-result-buffer)
-(defvar zotero-output-buffer)
+(defvar zotero-result-buf)
+(defvar zotero-output-buf)
 
 (defhydra zotero-insert-menu (:color pink)
   "what to do with string?"
   ("i" (lambda ()
          (interactive)
-         (insert (format "%s" zotero-output-buffer)))
+         (insert (format "%s" zotero-output-buf)))
    "insert at point"
    :exit t)
   
   ("c" (lambda ()
          (interactive)
-         (kill-new (format "%s" zotero-output-buffer)))
+         (kill-new (format "%s" zotero-output-buf))
+         (message (format "copied \"%s\"" zotero-output-buf)))
    "copy to clipboard"
    :exit t)
 
   ("q" nil "cancel"))
 
 (defun set-zotero-active-result (return-key)
-  (let ((return-val (plist-get zotero-result-buffer return-key)))
-    (setq zotero-output-buffer
+  (let ((return-val (plist-get zotero-result-buf return-key)))
+    (setq zotero-output-buf
           (format
            "%s"
            (if (eq 'vector (type-of return-val))
@@ -44,12 +45,12 @@
   
   ("o" (lambda ()
          (interactive)
-         (org-open-file (plist-get zotero-result-buffer :fulltext) t))
+         (org-open-file (plist-get zotero-result-buf :fulltext) t))
    "open with emacs!" :exit t)
   
   ("O" (lambda ()
          (interactive)
-         (org-open-file (plist-get zotero-result-buffer :fulltext)))
+         (org-open-file (plist-get zotero-result-buf :fulltext)))
    "open EXTERNALLY" :exit t)
   
   ("i" (lambda ()
@@ -158,8 +159,4 @@
                             search-string)))
                   "\n"))))))))
       (zotero-choose-result item-list))))
-
-
-
-
 
