@@ -1,12 +1,127 @@
 (require 'cl)
+(require 'hydra)
 
 ;; zotero query
 (require 'json)
 
+;; tells us where to look for qnotero_util.py
 (defconst zotero-query-dir
   (if load-file-name
       (file-name-directory load-file-name)
     (file-name-directory (buffer-file-name))))
+
+;; TODO change to defvar
+(defvar zotero-result-buffer)
+(defvar zotero-output-buffer)
+
+(defhydra zotero-insert-menu (:color pink)
+  "what to do with string?"
+  ("i" (lambda ()
+         (interactive)
+         (insert (format "%s" zotero-output-buffer)))
+   "insert at point"
+   :exit t)
+  
+  ("c" (lambda ()
+         (interactive)
+         (kill-new (format "%s" zotero-output-buffer)))
+   "copy to clipboard"
+   :exit t)
+
+  ("q" nil "cancel"))
+
+(defun set-zotero-active-result (return-key)
+  (let ((return-val (plist-get zotero-result-buffer return-key)))
+    (setq zotero-output-buffer
+          (format
+           "%s"
+           (if (eq 'vector (type-of return-val))
+               (mapconcat 'identity return-val ", ")
+             return-val)))))
+
+(defhydra zotero-result-menu (:color pink :hint nil)
+  "what do you want?"
+  
+  ("o" (lambda ()
+         (interactive)
+         (org-open-file (plist-get zotero-result-buffer :fulltext) t))
+   "open with emacs!" :exit t)
+  
+  ("O" (lambda ()
+         (interactive)
+         (org-open-file (plist-get zotero-result-buffer :fulltext)))
+   "open EXTERNALLY" :exit t)
+  
+  ("i" (lambda ()
+         (interactive)
+         (set-zotero-active-result :id)
+         (zotero-insert-menu/body)) "id"
+         :exit t)
+
+  ("k" (lambda ()
+         (interactive)
+         (set-zotero-active-result :key)
+         (zotero-insert-menu/body)) "key"
+         :exit t)
+
+  ("a" (lambda ()
+         (interactive)
+         (set-zotero-active-result :authors)
+         (zotero-insert-menu/body)) "authors"
+         :exit t)
+
+  ("p" (lambda ()
+         (interactive)
+         (set-zotero-active-result :publication)
+         (zotero-insert-menu/body)) "publication"
+         :exit t)
+
+  ("t" (lambda ()
+         (interactive)
+         (set-zotero-active-result :title)
+         (zotero-insert-menu/body)) "title"
+         :exit t)
+
+  ("g" (lambda ()
+         (interactive)
+         (set-zotero-active-result :tags)
+         (zotero-insert-menu/body)) "tags"
+         :exit t)
+
+  ("s" (lambda ()
+         (interactive)
+         (set-zotero-active-result :simple_format)
+         (zotero-insert-menu/body)) "simple format"
+         :exit t)
+
+  ("f" (lambda ()
+         (interactive)
+         (set-zotero-active-result :fulltext)
+         (zotero-insert-menu/body)) "file path"
+         :exit t)
+
+  ("q" nil "cancel"))
+
+(defun zotero-choose-result (item-list)
+  (let ((counter 0))
+    (when (< 0 (length item-list))
+      (let ((selection (string-to-int
+                        (char-to-string
+                         ;; simple simple menu
+                         (read-char
+                          (concat (format "%s results, what do?\n"
+                                          (length item-list))
+                                  (mapconcat #'(lambda (item)
+                                                 (incf counter)
+                                                 (format "[%d]  %s %s" counter (plist-get item :title) (plist-get item :authors)))
+                                             item-list "\n")
+                                  ))))))
+        (if (and (< 0 selection)
+                 (<= selection (length item-list)))
+            (progn
+              (setq zotero-result-buffer (elt item-list (1- selection)))
+              (zotero-result-menu/body))
+          (message "invalid selection"))))))
 
 ;; json return structure contains keys:
 ;; :id
@@ -25,7 +140,7 @@
                                  (if default-string
                                      (concat " [" default-string "]")
                                    "")) nil nil default-string))
-         (return-key :simple_format))
+         (return-key :fulltext))
     (let ((item-list
            (let ((json-object-type 'plist))
              (json-read-from-string
@@ -42,7 +157,9 @@
                             (concat zotero-query-dir "qnotero_util.py")
                             search-string)))
                   "\n"))))))))
-      (insert
-       (plist-get
-        (elt item-list 0)
-        return-key)))))
+      (zotero-choose-result item-list))))
+
+
+
+
+
