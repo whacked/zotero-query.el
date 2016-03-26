@@ -18,7 +18,8 @@ import os.path as _p
 from glob import glob
 from libzotero import libzotero
 
-ZOTERO_FOLDER_PATH = glob(_p.expanduser('~/.*ozilla/*irefox/Profiles/*.default/zotero'))[0]
+# what happens to windows?
+ZOTERO_FOLDER_PATH = glob(_p.expanduser('~/.*ozilla/*irefox/*rofiles/*.default/zotero'))[0]
 
 zotero = libzotero.LibZotero(ZOTERO_FOLDER_PATH)
 
