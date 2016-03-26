@@ -103,24 +103,41 @@
 
   ("q" nil "cancel"))
 
+(defun zotero-author-list-string (author-list)
+  (propertize
+   (let ((nitem (length author-list)))
+     (cond ((= 1 nitem)
+            (elt author-list 0))
+           ((= 2 nitem)
+            (mapconcat 'identity author-list ", "))
+           (t (concat (elt author-list 0) " et al"))))
+   'face '(:foreground "yellow")))
+
 (defun zotero-choose-result (item-list)
-  (let ((counter 0))
-    (when (< 0 (length item-list))
+  (let* ((counter 0)
+         (nres (length item-list))
+         (nshow (min 9 nres)))
+    (when (< 0 nres)
       (let ((selection (string-to-int
                         (char-to-string
                          ;; simple simple menu
                          (read-char
-                          (concat (format "%s results, what do?\n"
-                                          (length item-list))
+                          (concat (format
+                                   "%s results (%s shown), what do?\n"
+                                   nres nshow)
                                   (mapconcat #'(lambda (item)
                                                  (incf counter)
-                                                 (format "[%d]  %s %s" counter (plist-get item :title) (plist-get item :authors)))
-                                             item-list "\n")
-                                  ))))))
+                                                 (format "[%s] %s (%s)"
+                                                         (propertize (number-to-string counter)
+                                                                     'face '(:foreground "SkyBlue"))
+                                                         (plist-get item :title)
+                                                         (zotero-author-list-string
+                                                          (plist-get item :authors))))
+                                             (subseq item-list 0 nshow) "\n")))))))
         (if (and (< 0 selection)
-                 (<= selection (length item-list)))
+                 (<= selection nres))
             (progn
-              (setq zotero-result-buffer (elt item-list (1- selection)))
+              (setq zotero-result-buf (elt item-list (1- selection)))
               (zotero-result-menu/body))
           (message "invalid selection"))))))
 
