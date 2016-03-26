@@ -4,7 +4,9 @@
 
 ** requirements
 
+   - python3
    - @smathot's [[https://github.com/smathot/qnotero][Qnotero]]
+   - [[https://github.com/abo-abo/hydra][abo-abo's hydra]]
 
 ** description
 
@@ -17,7 +19,7 @@
 
 *** Zotero database location
     
-    assumed to be within a $HOME/[Mm]ozilla/[Ff]irefox/Profiles/*.default/zotero
+    assumed to be within a $HOME/[Mm]ozilla/[Ff]irefox/[Pp]rofiles/*.default/zotero
 
 ** example elisp query
 
