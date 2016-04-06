@@ -174,7 +174,7 @@
 ;; :fulltext        ;;; this is actually pdf filepath
 (defun zotero-query (&optional input-string)
   (interactive)
-  (let* ((default-string (if mark-active (calibre-chomp (buffer-substring (mark) (point)))))
+  (let* ((default-string (if mark-active (replace-regexp-in-string "[\s\n]+$" "" (buffer-substring (mark) (point)))))
          (search-string (or input-string
                             (read-string
                              (format "search string%s: "
