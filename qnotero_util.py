@@ -63,6 +63,19 @@ def postprocess(dres_list):
     cur.close()
     
 
+def postprocess(dres_list):
+    cur = zotero.conn.cursor()
+    doi_fieldID = cur.execute("SELECT fieldID FROM fields WHERE fieldName LIKE 'DOI' LIMIT 1").fetchone()[0]
+    for dres in dres_list:
+        row = cur.execute("SELECT idv.value FROM itemData AS idata, itemDataValues AS idv " +
+                          "WHERE ? = idata.itemID " +
+                          "AND idata.fieldID = ? " +
+                          "AND idata.valueID = idv.valueID",
+                          (dres['id'], doi_fieldID)).fetchone()
+        if row:
+            dres['doi'] = row[0]
+    cur.close()
+
 if __name__ == '__main__':
 
     if len(sys.argv) < 2:
