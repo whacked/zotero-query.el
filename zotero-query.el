@@ -10,6 +10,19 @@
       (file-name-directory load-file-name)
     (file-name-directory (buffer-file-name))))
 
+(defun format-org-zotero-link (zotero-key)
+  (format "[[zotero:%s]]" zotero-key))
+
+(org-add-link-type "zotero" 'org-zotero-link-open 'org-zotero-link-export)
+
+(defun org-zotero-link-open (link)
+  "Open zotero styled link."
+  (zotero-query link))
+
+(defun org-zotero-link-export (link description format)
+  "FIXME: stub function"
+  (concat "link in zotero: " link " (" description ")"))
+
 (defvar zotero-result-buf)
 (defvar zotero-output-buf)
 
