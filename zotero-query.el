@@ -159,14 +159,15 @@
 ;; :tags
 ;; :simple_format   ;;; basic citation
 ;; :fulltext        ;;; this is actually pdf filepath
-(defun zotero-query ()
+(defun zotero-query (&optional input-string)
   (interactive)
   (let* ((default-string (if mark-active (calibre-chomp (buffer-substring (mark) (point)))))
-         (search-string (read-string
-                         (format "search string%s: "
-                                 (if default-string
-                                     (concat " [" default-string "]")
-                                   "")) nil nil default-string))
+         (search-string (or input-string
+                            (read-string
+                             (format "search string%s: "
+                                     (if default-string
+                                         (concat " [" default-string "]")
+                                       "")) nil nil default-string)))
          (return-key :fulltext))
     (let ((item-list
            (let ((json-object-type 'plist))
