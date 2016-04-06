@@ -17,9 +17,15 @@
     currently =qnotero= is an import in the python utility script;
     it is expected to reside in =/opt/qnotero=
 
+    it turns out qnotero caches the /entire/ zotero library on init (see [[https://github.com/smathot/qnotero/blob/master/libzotero/libzotero.py][libzotero.py]]). This makes repeated searching fast, but one-off CLI interaction slow. Thus this dependency may get removed in a future update.
+
 *** Zotero database location
     
     assumed to be within a $HOME/[Mm]ozilla/[Ff]irefox/[Pp]rofiles/*.default/zotero
+
+*** Zotero data model
+
+    see [[https://github.com/zotero/zotero/blob/master/resource/schema/userdata.sql][userdata.sql]] for reference
 
 ** current functionality
 
