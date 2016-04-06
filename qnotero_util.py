@@ -46,22 +46,18 @@ zotero = libzotero.LibZotero(ZOTERO_FOLDER_PATH)
 #     # item.tags # list of <str>
 #     # item.fulltext # path to local file
 
-def postprocess(dres_list):
+def search_by_doi(doi_string):
     cur = zotero.conn.cursor()
     doi_fieldID = cur.execute("SELECT fieldID FROM fields WHERE fieldName LIKE 'DOI' LIMIT 1").fetchone()[0]
-    for dres in dres_list:
-        row = cur.execute(
-            ("SELECT idv.value FROM itemData AS idata, itemDataValues AS idv " +
-             "WHERE %(itemID)d = idata.itemID " +
-             "AND idata.fieldID = %(fieldID)d " +
-             "AND idata.valueID = idv.valueID") % dict(
-            itemID = dres['id'],
-            fieldID = doi_fieldID,
-        )).fetchone()
-        if row:
-            dres['doi'] = row[0]
+    out = []
+    for row in cur.execute("SELECT idata.itemID FROM itemData AS idata, itemDataValues AS idv " +
+                      "WHERE idata.fieldID = ? " +
+                      "AND idata.valueID = idv.valueID " +
+                      "AND idv.value LIKE ?",
+                      (doi_fieldID, doi_string)).fetchall():
+        out.append(row[0])
     cur.close()
-    
+    return out
 
 def postprocess(dres_list):
     cur = zotero.conn.cursor()
@@ -85,7 +81,13 @@ if __name__ == '__main__':
     import base64
 
     query_string = sys.argv[1]
-    res = zotero.search(query_string)
+    if query_string.lower().startswith('doi:'):
+        doi_string = query_string[4:]
+        print('searching for: %s' % doi_string)
+        match_id_list = search_by_doi(doi_string)
+        res = [zotero.index[z_id] for z_id in match_id_list]
+    else:
+        res = zotero.search(query_string)
 
     # convert to dict list
     output_klist = (
