@@ -126,6 +126,7 @@
          (nres (length item-list))
          (nshow (min 9 nres)))
     (when (< 0 nres)
+      (message nil)
       (let ((selection (string-to-int
                         (char-to-string
                          ;; simple simple menu
