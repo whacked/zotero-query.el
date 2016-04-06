@@ -46,6 +46,22 @@ zotero = libzotero.LibZotero(ZOTERO_FOLDER_PATH)
 #     # item.tags # list of <str>
 #     # item.fulltext # path to local file
 
+def postprocess(dres_list):
+    cur = zotero.conn.cursor()
+    doi_fieldID = cur.execute("SELECT fieldID FROM fields WHERE fieldName LIKE 'DOI' LIMIT 1").fetchone()[0]
+    for dres in dres_list:
+        row = cur.execute(
+            ("SELECT idv.value FROM itemData AS idata, itemDataValues AS idv " +
+             "WHERE %(itemID)d = idata.itemID " +
+             "AND idata.fieldID = %(fieldID)d " +
+             "AND idata.valueID = idv.valueID") % dict(
+            itemID = dres['id'],
+            fieldID = doi_fieldID,
+        )).fetchone()
+        if row:
+            dres['doi'] = row[0]
+    cur.close()
+    
 
 if __name__ == '__main__':
 
@@ -55,6 +71,10 @@ if __name__ == '__main__':
     import json
     import base64
 
+    query_string = sys.argv[1]
+    res = zotero.search(query_string)
+
+    # convert to dict list
     output_klist = (
         'id', 'key',
         'authors', 'publication',
@@ -62,14 +82,16 @@ if __name__ == '__main__':
         'simple_format()',
         'fulltext',
     )
-    query_string = sys.argv[1]
-    res = zotero.search(query_string)
-    json_str = (json.dumps([
-        {(k.endswith('()') and k[:-2] or k):
-         (k.endswith('()')
-          and getattr(it, k[:-2])()
-         or getattr(it, k))
-        for k in output_klist}
-        for it in res
-    ]))
-    print(base64.b64encode(bytes(json_str, 'utf-8')).decode('utf-8'))
+    dres_list = [{(k.endswith('()') and k[:-2] or k):
+                  (k.endswith('()') and getattr(it, k[:-2])() or getattr(it, k))
+                  for k in output_klist} for it in res]
+
+    # add extra fields if possible
+    postprocess(dres_list)
+    
+    if '--no-base64' not in sys.argv:
+        json_str = json.dumps(dres_list)
+        print(base64.b64encode(bytes(json_str, 'utf-8')).decode('utf-8'))
+    else:
+        print(json.dumps(dres_list, indent=2))
+        
