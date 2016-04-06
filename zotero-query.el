@@ -148,30 +148,33 @@
   (let* ((counter 0)
          (nres (length item-list))
          (nshow (min 9 nres)))
-    (when (< 0 nres)
-      (message nil)
-      (let ((selection (string-to-int
-                        (char-to-string
-                         ;; simple simple menu
-                         (read-char
-                          (concat (format
-                                   "%s results (%s shown), what do?\n"
-                                   nres nshow)
-                                  (mapconcat #'(lambda (item)
-                                                 (incf counter)
-                                                 (format "[%s] %s (%s)"
-                                                         (propertize (number-to-string counter)
-                                                                     'face '(:foreground "SkyBlue"))
-                                                         (plist-get item :title)
-                                                         (zotero-author-list-string
-                                                          (plist-get item :authors))))
-                                             (subseq item-list 0 nshow) "\n")))))))
-        (if (and (< 0 selection)
-                 (<= selection nres))
-            (progn
-              (setq zotero-result-buf (elt item-list (1- selection)))
-              (zotero-result-menu/body))
-          (message "invalid selection"))))))
+    (cond ((= 1 nres)
+           (setq zotero-result-buf (elt item-list 0))
+           (zotero-result-menu/body))
+          ((< 0 nres)
+           (message nil)
+           (let ((selection (string-to-int
+                             (char-to-string
+                              ;; simple simple menu
+                              (read-char
+                               (concat (format
+                                        "%s results (%s shown), what do?\n"
+                                        nres nshow)
+                                       (mapconcat #'(lambda (item)
+                                                      (incf counter)
+                                                      (format "[%s] %s (%s)"
+                                                              (propertize (number-to-string counter)
+                                                                          'face '(:foreground "SkyBlue"))
+                                                              (plist-get item :title)
+                                                              (zotero-author-list-string
+                                                               (plist-get item :authors))))
+                                                  (subseq item-list 0 nshow) "\n")))))))
+             (if (and (< 0 selection)
+                      (<= selection nres))
+                 (progn
+                   (setq zotero-result-buf (elt item-list (1- selection)))
+                   (zotero-result-menu/body))
+               (message "invalid selection")))))))
 
 ;; json return structure contains keys:
 ;; :id
