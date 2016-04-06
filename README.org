@@ -2,6 +2,17 @@
 
   goal is to provide convenience functions / keys to query the zotero db + open files, without having to have a running zotero instance
 
+** current functionality
+
+   *still in progress*
+
+   - =M-x zotero-query= to search against db
+   - =zotero:doi:10.9999/example= style or =zotero:Some Title Text= org-mode links (export formatter is not yet implemented)
+   - insert org-pdfview link or other information from result selection
+   - =M-x pdf-annot-trigger= on =pdfview= link
+     - insert text extraction of annotations in pdf
+     - select specific text annotation from =helm= menu + insert
+   
 ** requirements
 
    - python3
@@ -27,16 +38,6 @@
 
     see [[https://github.com/zotero/zotero/blob/master/resource/schema/userdata.sql][userdata.sql]] for reference
 
-** current functionality
-
-   *LIKELY TO CHANGE!*
-
-   - =M-x zotero-query= to search against db
-   - insert org-pdfview link or other information from result selection
-   - =M-x pdf-annot-trigger= on =pdfview= link
-     - insert text extraction of annotations in pdf
-     - select specific text annotation from =helm= menu + insert
-   
 ** example elisp query
 
    more functionality to be added later. also, the =devel= branch's elisp is completely separate
