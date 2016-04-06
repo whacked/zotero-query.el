@@ -74,6 +74,16 @@
                            (plist-get zotero-result-buf :title)))))
    "insert org-pdfview link at point" :exit t)
 
+  ("z" (lambda ()
+         (interactive)
+         (save-excursion
+           (insert
+            (format-org-zotero-link
+             (if (plist-get zotero-result-buf :doi)
+                 (concat "doi:" (plist-get zotero-result-buf :doi))
+               (plist-get zotero-result-buf :title))))))
+   "insert zotero link at point" :exit t)
+  
   ("i" (lambda ()
          (interactive)
          (set-zotero-active-result :id)
