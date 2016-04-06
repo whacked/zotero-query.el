@@ -87,7 +87,8 @@ if __name__ == '__main__':
         match_id_list = search_by_doi(doi_string)
         res = [zotero.index[z_id] for z_id in match_id_list]
     else:
-        res = zotero.search(query_string)
+        # TODO strip other query noise
+        res = zotero.search(query_string.replace(':', ' '))
 
     # convert to dict list
     output_klist = (
