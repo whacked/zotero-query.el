@@ -43,7 +43,7 @@
 	      (setq section (match-string 1 l))
 	      (setq section-list nil)))
 	      ;; catch properties
-	      (if (string-match "^\\(.+\\)=\\(.+\\)$" l)
+	      (if (string-match "^\\([^\s\t]+\\)[\s\t]*=[\s\t]*\\(.+\\)$" l)
 		  (let ((property (match-string 1 l))
 			(value (match-string 2 l)))
 		    (progn 
