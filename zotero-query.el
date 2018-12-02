@@ -73,10 +73,12 @@
     (sql-query prop-names)
   (let ((result-string (zotero--exec-sqlite-query sql-query)))
     (when (< 0 (length result-string))
-      (mapcar
-       (lambda (line)
-         (zotero--read-result-line-to-plist prop-names line))
-       (split-string result-string "\n")))))
+      (if (equal "Error: database is locked" result-string)
+          (error result-string)
+        (mapcar
+         (lambda (line)
+           (zotero--read-result-line-to-plist prop-names line))
+         (split-string result-string "\n"))))))
 
 (defun zotero--aggregate-items-by-key
     (item-property-row-list)
