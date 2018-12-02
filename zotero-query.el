@@ -182,13 +182,54 @@
                   (intern (plist-get item-property-row 'fieldName))
                   (plist-get item-property-row 'value)))))))))
 
+
+(defun zotero-query-by-fulltext
+    (search-word)
+  (let ((sql-query
+         (format
+          (zotero--concat-sql-statements
+           :debug
+           " SELECT"
+           ;; NOTE, the target item is the PARENT, not the attachment item!
+           "  parentItems.itemID"
+           " ,parentItems.key,parentItems.dateModified"
+           " ,itemDataValues.value AS title"
+           " ,fulltextWords.word"
+           " FROM fulltextWords"
+           " JOIN fulltextItemWords ON fulltextWords.wordID = fulltextItemWords.wordID"
+           " JOIN items AS attachmentItems ON fulltextItemWords.itemID = attachmentItems.itemID"
+           " JOIN itemTypes ON attachmentItems.itemTypeID = itemTypes.itemTypeID"
+           ;; get the parent item
+           " JOIN itemAttachments ON itemAttachments.itemID = attachmentItems.itemID"
+           " JOIN items AS parentItems ON itemAttachments.parentItemID = parentItems.itemID"
+           ;; get the title of the PARENT item
+           " JOIN itemData ON parentItems.itemID = itemData.itemID"
+           " JOIN itemDataValues ON itemData.valueID = itemDataValues.valueID"
+           " JOIN fields ON itemData.fieldID = fields.fieldID"
+           " WHERE 1"
+           " AND itemTypes.typeName = 'attachment'"
+           " AND fields.fieldName = 'title'"
+           " AND fulltextWords.word = LOWER('%s')"
+           " GROUP BY parentItems.itemID"
+           " LIMIT 20")
+          search-word)))
+    (zotero--exec-sqlite-query-to-plist-items
+     sql-query
+     '(itemID key dateModified title word))))
+
 (defun zotero-query-any
     (query-string)
   (let* ((tags-and-creators-matches
           (zotero-query-by-tags-and-creators query-string))
+         (full-text-matches
+          (zotero-query-by-fulltext
+           query-string))
          (attributes-matches
           (zotero-query-by-attributes query-string)))
-    (dolist (item-property-row tags-and-creators-matches attributes-matches)
+    (dolist (item-property-row
+             (append tags-and-creators-matches
+                     full-text-matches)
+             attributes-matches)
       (let* ((item-id (string-to-number (plist-get item-property-row 'itemID)))
              (item-attribute-data (plist-get attributes-matches item-id)))
         (setq attributes-matches
