@@ -49,6 +49,7 @@
      (if debug-mode
          "\n"
        " "))))
+
 (defun zotero--read-result-line-to-plist (prop-names result-line)
   (comment
    (zotero--read-result-line-to-plist
@@ -455,43 +456,59 @@
                    (zotero-result-menu/body))
                (message "invalid selection")))))))
 
-;; :id
-;; :key
-;; :authors
-;; :publication
-;; :title
-;; :tags
-;; :simple_format   ;;; basic citation
-;; :filepath
+(defun zotero--combined-query-result-to-choice-list
+    (query-result)
+  (let (out)
+    (loop for (item-id item-data)
+          on mytemp1
+          by (function cddr)
+          do
+          ;; filter out items that don't have a title or an attachment
+          (when (and (plist-get item-data 'title)
+                     (plist-get item-data 'attachmentKey))
+            (setq out
+                  (cons
+                   (plist-put
+                    (plist-put item-data 'id item-id)
+                    'filepath
+                    (zotero--get-attachment-key-path-filepath
+                     (plist-get item-data 'attachmentKey)
+                     (plist-get item-data 'attachmentPath)))
+                   out))))
+    out))
+
+;; interesting property keys after zotero--combined-query-result-to-choice-list
+;; id
+;; itemID
+;; title
+;; attachmentKey
+;; attachmentPath
+;; url
+;; key
+;; dateModified
+;; title
+;; tags
+;; creators
+;; attachmentKey
+;; attachmentPath
+;; filepath
 (defun zotero-query (&optional input-string)
   (interactive)
-  (let* ((default-string (if mark-active (replace-regexp-in-string "[\s\n]+$" "" (buffer-substring (mark) (point)))))
+  (let* ((default-string (if mark-active
+                             (replace-regexp-in-string
+                              "[\s\n]+$" ""
+                              (buffer-substring (mark) (point)))))
          (search-string (or input-string
                             (read-string
                              (format "search string%s: "
                                      (if default-string
                                          (concat " [" default-string "]")
-                                       "")) nil nil default-string)))
-         (return-key :fulltext))
-    (let ((item-list
-           (let ((json-object-type 'plist))
-             (json-read-from-string
-              (base64-decode-string
-               (first
-                (last
-                 ;; qnotero outputs other operational text; we want the line from the script execution
-                 (split-string
-                  ;; strip trailing whitespace
-                  (replace-regexp-in-string
-                   "[\s\n]+$" ""
-                   (shell-command-to-string
-                    (format "python3 '%s' '%s'"
-                            (concat zotero-query-dir "qnotero_util.py")
-                            search-string)))
-                  "\n"))))))))
+                                       ""))
+                             nil nil default-string)))
+         (return-key :filepath))
+    (let ((item-list (zotero--combined-query-result-to-choice-list
+                      (zotero-query-any search-string))))
       (zotero-choose-result item-list))))
-
-
 
 ;; PDF annotation interaction code
 ;; NOTE this isn't zotero-specific, so this will likely be moved in the future
