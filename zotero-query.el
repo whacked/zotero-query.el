@@ -283,28 +283,28 @@
      sql-query
      (cons 'key properties))))
 
+(defun zotero--get-attachment-key-path-filepath
+    (item-key item-path)
+  (concat
+   (file-name-as-directory
+    (concat
+     (file-name-as-directory
+      (zotero--find-library-filepath))
+     "storage/"
+     item-key))
+   (replace-regexp-in-string
+    "^storage:" ""
+    item-path)))
+
 (defun zotero-get-attachment-plist-filepath
     (attachment-plist)
   (let ((zotero-internal-path (plist-get attachment-plist 'path)))
     (if (not (string-match-p "^storage:" zotero-internal-path))
         (message "ERROR: don't know how to handle this path: %s"
                  zotero-internal-path)
-      (concat
-       (file-name-as-directory
-        (concat
-         (file-name-as-directory
-          (zotero--find-library-filepath))
-         "storage/"
-         (plist-get attachment-plist 'key)))
-       (replace-regexp-in-string
-        "^storage:" ""
-        zotero-internal-path)))))
-
-;; tells us where to look for qnotero_util.py
-(defconst zotero-query-dir
-  (if load-file-name
-      (file-name-directory load-file-name)
-    (file-name-directory (buffer-file-name))))
+      (zotero--get-attachment-key-path-filepath
+       (plist-get attachment-plist 'key)
+       zotero-internal-path))))
 
 (defun format-org-zotero-link (zotero-key)
   (format "[[zotero:%s]]" zotero-key))
