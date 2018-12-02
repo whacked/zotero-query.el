@@ -100,30 +100,38 @@
            " SELECT"
            "  items.itemID"
            " ,items.key,items.dateModified"
+           " ,itemDataValues.value AS title"
            " ,tags"
            " ,creators"
            " FROM items"
+           ;; get the entry title
+           " JOIN itemData ON itemData.itemID = items.itemID"
+           " JOIN itemDataValues ON itemDataValues.valueID = itemData.valueID"
+           " JOIN fields ON fields.fieldID = itemData.fieldID"
+           ;; get tags
            " LEFT OUTER JOIN"
            " (SELECT itemTags.itemID, GROUP_CONCAT(tags.name, ', ') AS tags"
            "  FROM tags"
            "  JOIN itemTags ON itemTags.tagID = tags.tagID"
            "  GROUP BY itemTags.itemID)"
            " AS tagsQ ON tagsQ.itemID = items.itemID"
+           ;; get authors (creators)
            " LEFT OUTER JOIN"
            " (SELECT itemCreators.itemID, GROUP_CONCAT(creators.lastName, ', ') AS creators"
            "  FROM itemCreators"
            "  JOIN creators ON creators.creatorID = itemCreators.creatorID"
            "  GROUP BY itemCreators.itemID)"
            " AS creatorsQ on creatorsQ.itemID = items.itemID"
-           " WHERE LOWER(tags)     LIKE LOWER('%%%s%%')"
-           "    OR LOWER(creators) LIKE LOWER('%%%s%%')"
+           " WHERE (   LOWER(tags)     LIKE LOWER('%%%s%%')"
+           "        OR LOWER(creators) LIKE LOWER('%%%s%%'))"
+           " AND fields.fieldName = 'title'"
            " LIMIT 20")
           query-string
           query-string
           )))
     (zotero--exec-sqlite-query-to-plist-items
      sql-query
-     '(itemID key dateModified tags creators))))
+     '(itemID key dateModified title tags creators))))
 
 (defun zotero-query-by-attributes
     (query-string)
