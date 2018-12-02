@@ -31,11 +31,11 @@
       (when (file-exists-p maybe-zotero-directory)
         (file-name-as-directory maybe-zotero-directory)))))
 
-(setq zotero-db
-      (concat
-       (file-name-as-directory
-        (zotero--find-library-filepath))
-       zotero-database-filename))
+(defvar zotero-db
+  (concat
+   (file-name-as-directory
+    (zotero--find-library-filepath))
+   zotero-database-filename))
 
 (defun zotero--concat-sql-statements
     (&rest statements)
