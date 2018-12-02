@@ -88,9 +88,12 @@
       (:key "abc" :date "2018-02-03")
       (:key "xyz" :title "other title")))))
 
-(defun zotero-query-by-tags-and-creators
+(defun zotero-query-by-tags-and-creators-and-filenames
     (query-string)
-  ;; looks for matching substring in *last name* and tags.
+  ;; looks for matching substring in
+  ;; - author *last name*s
+  ;; - tags
+  ;; - filename of the attachment 
   ;; returns a list of property-list items like
   ;; (list (itemID 5 key "abcd" ...)
   ;;       (itemID 29 key "zxcv" ...) ...)
@@ -103,6 +106,8 @@
            " ,itemDataValues.value AS title"
            " ,tags"
            " ,creators"
+           " ,attachmentItems.key AS attachmentKey"
+           " ,itemAttachments.path AS attachmentPath"
            " FROM items"
            ;; get the entry title
            " JOIN itemData ON itemData.itemID = items.itemID"
@@ -122,16 +127,21 @@
            "  JOIN creators ON creators.creatorID = itemCreators.creatorID"
            "  GROUP BY itemCreators.itemID)"
            " AS creatorsQ on creatorsQ.itemID = items.itemID"
-           " WHERE (   LOWER(tags)     LIKE LOWER('%%%s%%')"
-           "        OR LOWER(creators) LIKE LOWER('%%%s%%'))"
+           ;; get attachments
+           " JOIN itemAttachments ON itemAttachments.parentItemID = items.itemID"
+           " JOIN items AS attachmentItems ON attachmentItems.itemID = itemAttachments.itemID"
+           " WHERE (   LOWER(tags)     = LOWER('%%%s%%')"
+           "        OR LOWER(creators) LIKE LOWER('%%%s%%')"
+           "        OR LOWER(itemAttachments.path) LIKE LOWER('%%%s%%'))"
            " AND fields.fieldName = 'title'"
            " LIMIT 20")
+          query-string
           query-string
           query-string
           )))
     (zotero--exec-sqlite-query-to-plist-items
      sql-query
-     '(itemID key dateModified title tags creators))))
+     '(itemID key dateModified title tags creators attachmentKey attachmentPath))))
 
 (defun zotero-query-by-attributes
     (query-string)
@@ -149,11 +159,17 @@
            " ,items.key"
            " ,fields.fieldName"
            " ,itemDataValues.value"
+           " ,attachmentItems.key AS attachmentKey"
+           " ,itemAttachments.path AS attachmentPath"
            " FROM items"
            " JOIN itemData ON itemData.itemID = items.itemID"
            " JOIN itemDataValues ON itemDataValues.valueID = itemData.valueID"
            " JOIN fields ON fields.fieldID = itemData.fieldID"
            " JOIN itemTags ON itemTags.itemID = items.itemID"
+           ;; get attachments
+           " JOIN itemAttachments ON itemAttachments.parentItemID = items.itemID"
+           " JOIN items AS attachmentItems ON attachmentItems.itemID = itemAttachments.itemID"
+           " WHERE 1"
            (concat
             ;; TODO: possibly support doi-only
             ;; " AND fields.fieldName = 'DOI'"
@@ -165,7 +181,7 @@
     (let ((item-property-row-list
            (zotero--exec-sqlite-query-to-plist-items
             sql-query
-            '(itemID key fieldName value)))
+            '(itemID key fieldName value attachmentKey attachmentPath)))
           out)
       (dolist (item-property-row item-property-row-list out)
         ;; WARNING!
@@ -178,10 +194,14 @@
                  out
                  item-id
                  (plist-put
-                  item-data
+                  (apply
+                   'append
+                   item-data
+                   (mapcar (lambda (k)
+                             (list k (plist-get item-property-row k)))
+                           '(title attachmentKey attachmentPath)))
                   (intern (plist-get item-property-row 'fieldName))
                   (plist-get item-property-row 'value)))))))))
-
 
 (defun zotero-query-by-fulltext
     (search-word)
@@ -195,6 +215,8 @@
            " ,parentItems.key,parentItems.dateModified"
            " ,itemDataValues.value AS title"
            " ,fulltextWords.word"
+           " ,attachmentItems.key AS attachmentKey"
+           " ,itemAttachments.path AS attachmentPath"
            " FROM fulltextWords"
            " JOIN fulltextItemWords ON fulltextWords.wordID = fulltextItemWords.wordID"
            " JOIN items AS attachmentItems ON fulltextItemWords.itemID = attachmentItems.itemID"
@@ -215,19 +237,19 @@
           search-word)))
     (zotero--exec-sqlite-query-to-plist-items
      sql-query
-     '(itemID key dateModified title word))))
+     '(itemID key dateModified title word 'attachmentKey 'attachmentPath))))
 
 (defun zotero-query-any
     (query-string)
-  (let* ((tags-and-creators-matches
-          (zotero-query-by-tags-and-creators query-string))
+  (let* ((tags-and-creators-and-filenames-matches
+          (zotero-query-by-tags-and-creators-and-filenames query-string))
          (full-text-matches
           (zotero-query-by-fulltext
            query-string))
          (attributes-matches
           (zotero-query-by-attributes query-string)))
     (dolist (item-property-row
-             (append tags-and-creators-matches
+             (append tags-and-creators-and-filenames-matches
                      full-text-matches)
              attributes-matches)
       (let* ((item-id (string-to-number (plist-get item-property-row 'itemID)))
