@@ -332,19 +332,19 @@
   
   ("o" (lambda ()
          (interactive)
-         (org-open-file (plist-get zotero-result-buf :fulltext) t))
+         (org-open-file (plist-get zotero-result-buf :filepath) t))
    "open with emacs!" :exit t)
   
   ("O" (lambda ()
          (interactive)
-         (org-open-file (plist-get zotero-result-buf :fulltext)))
+         (org-open-file (plist-get zotero-result-buf :filepath)))
    "open EXTERNALLY" :exit t)
   
   ("l" (lambda ()
          (interactive)
          (save-excursion
            (insert (format "[[pdfview:%s][%s]]"
-                           (plist-get zotero-result-buf :fulltext)
+                           (plist-get zotero-result-buf :filepath)
                            (plist-get zotero-result-buf :title)))))
    "insert org-pdfview link at point" :exit t)
 
@@ -402,7 +402,7 @@
 
   ("f" (lambda ()
          (interactive)
-         (set-zotero-active-result :fulltext)
+         (set-zotero-active-result :filepath)
          (zotero-insert-menu/body)) "file path"
          :exit t)
 
@@ -450,7 +450,6 @@
                    (zotero-result-menu/body))
                (message "invalid selection")))))))
 
-;; json return structure contains keys:
 ;; :id
 ;; :key
 ;; :authors
@@ -458,7 +457,7 @@
 ;; :title
 ;; :tags
 ;; :simple_format   ;;; basic citation
-;; :fulltext        ;;; this is actually pdf filepath
+;; :filepath
 (defun zotero-query (&optional input-string)
   (interactive)
   (let* ((default-string (if mark-active (replace-regexp-in-string "[\s\n]+$" "" (buffer-substring (mark) (point)))))
