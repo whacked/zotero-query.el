@@ -7,9 +7,6 @@
 
 (require 'hydra)
 
-;; zotero query
-(require 'json)
-
 ;; UTILITY
 (defmacro comment (&rest body)
   nil)

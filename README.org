@@ -6,72 +6,31 @@
 
    *still in progress*
 
-   - =M-x zotero-query= to search against db
+   - =M-x zotero-query= to search against db; launches a hydra menu for further action
    - =zotero:doi:10.9999/example= style or =zotero:Some Title Text= org-mode links (export formatter is not yet implemented)
+     - =C-c C-c= in org-mode on a =zotero:= link triggers the query action
    - insert org-pdfview link or other information from result selection
    - =M-x pdf-annot-trigger= on =pdfview= link
      - insert text extraction of annotations in pdf
      - select specific text annotation from =helm= menu + insert
    
-** requirements
+** dependencies
 
-   - python3
-   - @smathot's [[https://github.com/smathot/qnotero][Qnotero]]
+   - sql.el (Emacs included, in progmodes)
+   - [[https://github.com/magnars/dash.el][dash]]
    - [[https://github.com/abo-abo/hydra][abo-abo's hydra]]
 
-** description
-
-   driver script is =qnotero_util.py=; it makes these assumptions:
+** Zotero database location
    
-*** Qnotero library
+   set / override using =zotero-db= var.
+   On Windows, it will try to discover from the HOME path (i.e. =C:\Users\youruser\Zotero=)
 
-    currently =qnotero= is an import in the python utility script;
-    it is expected to reside in =/opt/qnotero=
+* development
 
-    it turns out qnotero caches the /entire/ zotero library on init (see [[https://github.com/smathot/qnotero/blob/master/libzotero/libzotero.py][libzotero.py]]). This makes repeated searching fast, but one-off CLI interaction slow. Thus this dependency may get removed in a future update.
+** Zotero data model
 
-*** Zotero database location
-    
-    assumed to be within a $HOME/[Mm]ozilla/[Ff]irefox/[Pp]rofiles/*.default/zotero
+   see [[https://github.com/zotero/zotero/blob/master/resource/schema/userdata.sql][userdata.sql]] for reference
 
-*** Zotero data model
+* see also
 
-    see [[https://github.com/zotero/zotero/blob/master/resource/schema/userdata.sql][userdata.sql]] for reference
-
-** example elisp query
-
-   more functionality to be added later. also, the =devel= branch's elisp is completely separate
-
-   #+BEGIN_SRC emacs-lisp :results value
-     (require 'json)
-     (let ((item-list
-            (let ((query "NiPype")
-                  (json-object-type 'plist))
-              (json-read-from-string
-               (base64-decode-string
-                (first
-                 (last
-                  (split-string
-                   (calibre-chomp
-                    (shell-command-to-string
-                     (format "python3 qnotero_util.py '%s'" query)))
-                   "\n"))))))))
-       
-       (plist-get
-        (elt item-list 0)
-        :title))
-
-   #+END_SRC
-
-   #+RESULTS:
-   : Nipype: A Flexible, Lightweight and Extensible Neuroimaging Data Processing Framework in Python
-
-** devel branch
-
-   contains an older, separate querying method directly against the sqlite db in the fashion of https://github.com/whacked/calibre-mode;
-
-   *eventually these repos will probably merge*
-
-** see also
-
-   - https://github.com/vitoshka/zotelo (requires MozRepl)
+  - https://github.com/vitoshka/zotelo (requires MozRepl)
