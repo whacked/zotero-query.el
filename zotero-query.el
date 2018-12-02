@@ -1,8 +1,231 @@
+;; for database schema, refer to
+;; https://github.com/zotero/zotero/blob/master/resource/schema/userdata.sql
+
 (require 'cl)
+(require 'sql)
+(require 'dash)
+
 (require 'hydra)
 
 ;; zotero query
 (require 'json)
+
+;; UTILITY
+(defmacro comment (&rest body)
+  nil)
+
+(defun zotero--chomp (s)
+  (replace-regexp-in-string "[\s\n]+$" "" s))
+
+(defun zotero--quote-% (str)
+  (replace-regexp-in-string "%" "%%" str))
+
+(defconst zotero-database-filename "zotero.sqlite")
+(defun zotero--find-library-filepath ()
+  (when (getenv "UserProfile")
+    (let ((maybe-zotero-directory
+           (concat
+            (file-name-as-directory
+             (getenv "UserProfile"))
+            "Zotero")))
+      (when (file-exists-p maybe-zotero-directory)
+        (file-name-as-directory maybe-zotero-directory)))))
+
+(setq zotero-db
+      (concat
+       (file-name-as-directory
+        (zotero--find-library-filepath))
+       zotero-database-filename))
+
+(defun zotero--concat-sql-statements
+    (&rest statements)
+  (let ((debug-mode (eq :debug
+                        (first statements))))
+    (mapconcat
+     'identity
+     (if debug-mode
+         (rest statements)
+       statements)
+     (if debug-mode
+         "\n"
+       " "))))
+(defun zotero--read-result-line-to-plist (prop-names result-line)
+  (comment
+   (zotero--read-result-line-to-plist
+    ;; prop-names
+    (list 'itemID 'key 'fieldName 'value) 
+    ;; result-line
+    "8	ABCD1234	DOI	10.0000/journal.xyz.12345"))
+  (-interleave
+   prop-names
+   (split-string result-line "\t")))
+
+(defun zotero--exec-sqlite-query
+    (sql-query)
+  (zotero--chomp
+   (shell-command-to-string
+    (format "%s -separator \"\t\" \"file:///%s?mode=ro\" \"%s\""
+            sql-sqlite-program
+            (replace-regexp-in-string "^/" "" zotero-db)
+            sql-query))))
+
+(defun zotero--exec-sqlite-query-to-plist-items
+    (sql-query prop-names)
+  (let ((result-string (zotero--exec-sqlite-query sql-query)))
+    (when (< 0 (length result-string))
+      (mapcar
+       (lambda (line)
+         (zotero--read-result-line-to-plist prop-names line))
+       (split-string result-string "\n")))))
+
+(defun zotero--aggregate-items-by-key
+    (item-property-row-list)
+  (comment
+   (zotero--aggregate-items-by-key
+    '((:key "abc" :title "some title")
+      (:key "abc" :date "2018-02-03")
+      (:key "xyz" :title "other title")))))
+
+(defun zotero-query-by-tags-and-creators
+    (query-string)
+  ;; looks for matching substring in *last name* and tags.
+  ;; returns a list of property-list items like
+  ;; (list (itemID 5 key "abcd" ...)
+  ;;       (itemID 29 key "zxcv" ...) ...)
+  (let ((sql-query
+         (format
+          (zotero--concat-sql-statements
+           " SELECT"
+           "  items.itemID"
+           " ,items.key,items.dateModified"
+           " ,tags"
+           " ,creators"
+           " FROM items"
+           " LEFT OUTER JOIN"
+           " (SELECT itemTags.itemID, GROUP_CONCAT(tags.name, ', ') AS tags"
+           "  FROM tags"
+           "  JOIN itemTags ON itemTags.tagID = tags.tagID"
+           "  GROUP BY itemTags.itemID)"
+           " AS tagsQ ON tagsQ.itemID = items.itemID"
+           " LEFT OUTER JOIN"
+           " (SELECT itemCreators.itemID, GROUP_CONCAT(creators.lastName, ', ') AS creators"
+           "  FROM itemCreators"
+           "  JOIN creators ON creators.creatorID = itemCreators.creatorID"
+           "  GROUP BY itemCreators.itemID)"
+           " AS creatorsQ on creatorsQ.itemID = items.itemID"
+           " WHERE LOWER(tags)     LIKE LOWER('%%%s%%')"
+           "    OR LOWER(creators) LIKE LOWER('%%%s%%')"
+           " LIMIT 20")
+          query-string
+          query-string
+          )))
+    (zotero--exec-sqlite-query-to-plist-items
+     sql-query
+     '(itemID key dateModified tags creators))))
+
+(defun zotero-query-by-attributes
+    (query-string)
+  ;; looks for matching substring by any of zotero's itemDataValues.value
+  ;; returns a property list of (item-key -> item-plist) mappings, like
+  ;; (1 (itemID 1 key ABCD
+  ;;     doi doi:1234.567 ...)
+  ;;  9 (itemID 9 key ZXCV
+  ;;     title "tied toll" ...) ...)
+  (let ((sql-query
+         (format
+          (zotero--concat-sql-statements
+           " SELECT"
+           "  items.itemID"
+           " ,items.key"
+           " ,fields.fieldName"
+           " ,itemDataValues.value"
+           " FROM items"
+           " JOIN itemData ON itemData.itemID = items.itemID"
+           " JOIN itemDataValues ON itemDataValues.valueID = itemData.valueID"
+           " JOIN fields ON fields.fieldID = itemData.fieldID"
+           " JOIN itemTags ON itemTags.itemID = items.itemID"
+           (concat
+            ;; TODO: possibly support doi-only
+            ;; " AND fields.fieldName = 'DOI'"
+            " AND LOWER(itemDataValues.value) LIKE LOWER('%%%s%%')")
+           " GROUP BY items.itemID, fields.fieldName"
+           " ORDER BY items.itemID ASC"
+           " LIMIT 20")
+          query-string)))
+    (let ((item-property-row-list
+           (zotero--exec-sqlite-query-to-plist-items
+            sql-query
+            '(itemID key fieldName value)))
+          out)
+      (dolist (item-property-row item-property-row-list out)
+        ;; WARNING!
+        ;; (eq (intern "asdf") 'asdf)      ;; t
+        ;; (eq (make-symbol "asdf") 'asdf) ;; nil! make-symbol makes a NEW symbol
+        (let* ((item-id (string-to-number (plist-get item-property-row 'itemID)))
+               (item-data (plist-get out item-id)))
+          (setq out
+                (plist-put
+                 out
+                 item-id
+                 (plist-put
+                  item-data
+                  (intern (plist-get item-property-row 'fieldName))
+                  (plist-get item-property-row 'value)))))))))
+
+(defun zotero-query-any
+    (query-string)
+  (let* ((tags-and-creators-matches
+          (zotero-query-by-tags-and-creators query-string))
+         (attributes-matches
+          (zotero-query-by-attributes query-string)))
+    (dolist (item-property-row tags-and-creators-matches attributes-matches)
+      (let* ((item-id (string-to-number (plist-get item-property-row 'itemID)))
+             (item-attribute-data (plist-get attributes-matches item-id)))
+        (setq attributes-matches
+              (plist-put
+               attributes-matches
+               item-id
+               (append
+                item-attribute-data
+                item-property-row)))))))
+
+(defun zotero-get-attachments
+    (item-id)
+  ;; returns a list of property list items like
+  ;; ((key "ASDF" itemId "9" parentItemId "8" contentType "application/pdf" path "storage:foo and bar - publication.pdf") ...)
+  (let* ((properties '(itemId parentItemId contentType path))
+         (sql-query (format
+                     (zotero--concat-sql-statements
+                      " SELECT"
+                      " items.key,"
+                      (mapconcat (lambda (sym)
+                                   (concat
+                                    "itemAttachments."
+                                    (symbol-name sym))) properties ",")
+                      " FROM itemAttachments"
+                      " JOIN items ON items.itemID = itemAttachments.ItemID"
+                      " WHERE itemAttachments.parentItemID = %s")
+                     item-id)))
+    (zotero--exec-sqlite-query-to-plist-items
+     sql-query
+     (cons 'key properties))))
+
+(defun zotero-get-attachment-plist-filepath
+    (attachment-plist)
+  (let ((zotero-internal-path (plist-get attachment-plist 'path)))
+    (if (not (string-match-p "^storage:" zotero-internal-path))
+        (message "ERROR: don't know how to handle this path: %s"
+                 zotero-internal-path)
+      (concat
+       (file-name-as-directory
+        (concat
+         (file-name-as-directory
+          (zotero--find-library-filepath))
+         "storage/"
+         (plist-get attachment-plist 'key)))
+       (replace-regexp-in-string
+        "^storage:" ""
+        zotero-internal-path)))))
 
 ;; tells us where to look for qnotero_util.py
 (defconst zotero-query-dir
