@@ -354,20 +354,20 @@
   
   ("o" (lambda ()
          (interactive)
-         (org-open-file (plist-get zotero-result-buf :filepath) t))
+         (org-open-file (plist-get zotero-result-buf 'filepath) t))
    "open with emacs!" :exit t)
   
   ("O" (lambda ()
          (interactive)
-         (org-open-file (plist-get zotero-result-buf :filepath)))
+         (org-open-file (plist-get zotero-result-buf 'filepath)))
    "open EXTERNALLY" :exit t)
   
   ("l" (lambda ()
          (interactive)
          (save-excursion
            (insert (format "[[pdfview:%s][%s]]"
-                           (plist-get zotero-result-buf :filepath)
-                           (plist-get zotero-result-buf :title)))))
+                           (plist-get zotero-result-buf 'filepath)
+                           (plist-get zotero-result-buf 'title)))))
    "insert org-pdfview link at point" :exit t)
 
   ("z" (lambda ()
@@ -375,70 +375,54 @@
          (save-excursion
            (insert
             (format-org-zotero-link
-             (if (plist-get zotero-result-buf :doi)
-                 (concat "doi:" (plist-get zotero-result-buf :doi))
-               (plist-get zotero-result-buf :title))))))
+             (if (plist-get zotero-result-buf 'doi)
+                 (concat "doi:" (plist-get zotero-result-buf 'doi))
+               (plist-get zotero-result-buf 'title))))))
    "insert zotero link at point" :exit t)
   
   ("i" (lambda ()
          (interactive)
-         (set-zotero-active-result :id)
+         (set-zotero-active-result 'id)
          (zotero-insert-menu/body)) "id"
          :exit t)
 
   ("k" (lambda ()
          (interactive)
-         (set-zotero-active-result :key)
+         (set-zotero-active-result 'key)
          (zotero-insert-menu/body)) "key"
          :exit t)
 
   ("a" (lambda ()
          (interactive)
-         (set-zotero-active-result :authors)
+         (set-zotero-active-result 'creators)
          (zotero-insert-menu/body)) "authors"
          :exit t)
 
   ("p" (lambda ()
          (interactive)
-         (set-zotero-active-result :publication)
+         (set-zotero-active-result 'publicationTitle)
          (zotero-insert-menu/body)) "publication"
          :exit t)
 
   ("t" (lambda ()
          (interactive)
-         (set-zotero-active-result :title)
+         (set-zotero-active-result 'title)
          (zotero-insert-menu/body)) "title"
          :exit t)
 
   ("g" (lambda ()
          (interactive)
-         (set-zotero-active-result :tags)
+         (set-zotero-active-result 'tags)
          (zotero-insert-menu/body)) "tags"
-         :exit t)
-
-  ("s" (lambda ()
-         (interactive)
-         (set-zotero-active-result :simple_format)
-         (zotero-insert-menu/body)) "simple format"
          :exit t)
 
   ("f" (lambda ()
          (interactive)
-         (set-zotero-active-result :filepath)
+         (set-zotero-active-result 'filepath)
          (zotero-insert-menu/body)) "file path"
          :exit t)
 
   ("q" nil "cancel"))
-
-(defun zotero-author-list-string (author-list)
-  (propertize
-   (let ((nitem (length author-list)))
-     (cond ((= 1 nitem)
-            (elt author-list 0))
-           ((= 2 nitem)
-            (mapconcat 'identity author-list ", "))
-           (t (concat (elt author-list 0) " et al"))))
-   'face '(:foreground "yellow")))
 
 (defun zotero-choose-result (item-list)
   (let* ((counter 0)
@@ -461,9 +445,8 @@
                                                       (format "[%s] %s (%s)"
                                                               (propertize (number-to-string counter)
                                                                           'face '(:foreground "SkyBlue"))
-                                                              (plist-get item :title)
-                                                              (zotero-author-list-string
-                                                               (plist-get item :authors))))
+                                                              (plist-get item 'title)
+                                                              (plist-get item 'creators)))
                                                   (subseq item-list 0 nshow) "\n")))))))
              (if (and (< 0 selection)
                       (<= selection nres))
