@@ -457,7 +457,7 @@
     (query-result)
   (let (out)
     (loop for (item-id item-data)
-          on mytemp1
+          on query-result
           by (function cddr)
           do
           ;; filter out items that don't have a title or an attachment
