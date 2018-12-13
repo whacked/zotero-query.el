@@ -163,7 +163,7 @@
            " JOIN itemData ON itemData.itemID = items.itemID"
            " JOIN itemDataValues ON itemDataValues.valueID = itemData.valueID"
            " JOIN fields ON fields.fieldID = itemData.fieldID"
-           " JOIN itemTags ON itemTags.itemID = items.itemID"
+           " LEFT OUTER JOIN itemTags ON itemTags.itemID = items.itemID"
            ;; get attachments
            " JOIN itemAttachments ON itemAttachments.parentItemID = items.itemID"
            " JOIN items AS attachmentItems ON attachmentItems.itemID = itemAttachments.itemID"
