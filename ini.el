@@ -1,6 +1,6 @@
-;;;;; ini.el --- Converting between INI files and association lists
+;;; ini.el --- Converting between INI files and association lists
 
-;; Author: Daniel Ness
+;; Author: Daniel Ness <daniel.r.ness@gmail.com>
 
 ;;; License
 ;;
@@ -77,3 +77,4 @@
 
 
 (provide 'ini)
+;;; ini.el ends here
