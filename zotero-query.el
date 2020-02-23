@@ -5,6 +5,11 @@
 (require 'sql)
 (require 'dash)
 
+(unless (require 'ini.el nil t)
+ (with-temp-buffer
+   (url-insert-file-contents
+    "https://raw.githubusercontent.com/daniel-ness/ini.el/6c91643468b834d23688d5db3e855d2d961490e7/ini.el")
+   (eval-buffer)))
 (require 'hydra)
 
 ;; UTILITY
@@ -17,16 +22,51 @@
 (defun zotero--quote-% (str)
   (replace-regexp-in-string "%" "%%" str))
 
+(defun zotero--get-data-dir-from-prefs-js (prefs-js-file-path)
+  (with-temp-buffer
+    (insert-file-contents
+     (concat
+      (file-name-as-directory candidate-dir)
+      (file-name-as-directory
+       (cdr (assoc "Path"
+                   (cdr (assoc "Profile0" zotero-ini)))))
+      "prefs.js"))
+    (let ((matcher "user_pref(\"extensions.zotero.dataDir\", \"\\(.+\\)\");"))
+      (dolist (line
+               (split-string (buffer-string) "\n")
+               zotero-data-dir)
+        (when (string-match matcher line)
+          (setq zotero-data-dir (match-string 1 line)))))))
+
 (defconst zotero-database-filename "zotero.sqlite")
 (defun zotero--find-library-filepath ()
-  (when (getenv "UserProfile")
-    (let ((maybe-zotero-directory
-           (concat
-            (file-name-as-directory
-             (getenv "UserProfile"))
-            "Zotero")))
-      (when (file-exists-p maybe-zotero-directory)
-        (file-name-as-directory maybe-zotero-directory)))))
+  (cond ((getenv "UserProfile")
+         (let ((maybe-zotero-directory
+                (concat
+                 (file-name-as-directory
+                  (getenv "UserProfile"))
+                 "Zotero")))
+           (when (file-exists-p maybe-zotero-directory)
+             (file-name-as-directory maybe-zotero-directory))))
+
+        (t
+         (let* ((candidate-dir (expand-file-name "~/.zotero/zotero"))
+                (candidate-ini (concat
+                                (file-name-as-directory
+                                 candidate-dir)
+                                "profiles.ini")))
+           (when (file-exists-p candidate-ini)
+             (let ((zotero-ini (ini-decode
+                                (with-temp-buffer
+                                  (insert-file-contents candidate-ini)
+                                  (buffer-string)))))
+               (zotero--get-data-dir-from-prefs-js
+                (concat
+                 (file-name-as-directory candidate-dir)
+                 (file-name-as-directory
+                  (cdr (assoc "Path"
+                              (cdr (assoc "Profile0" zotero-ini)))))
+                 "prefs.js"))))))))
 
 (defvar zotero-db
   (concat
