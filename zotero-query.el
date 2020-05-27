@@ -2,8 +2,10 @@
 ;; https://github.com/zotero/zotero/blob/master/resource/schema/userdata.sql
 
 (require 'cl)
-(require 'sql)
 (require 'dash)
+(require 'esqlite)
+(require 's)
+(require 'sql)
 
 (unless (require 'ini.el nil t)
  (with-temp-buffer
@@ -12,15 +14,7 @@
    (eval-buffer)))
 (require 'hydra)
 
-;; UTILITY
-(defmacro comment (&rest body)
-  nil)
-
-(defun zotero--chomp (s)
-  (replace-regexp-in-string "[\s\n]+$" "" s))
-
-(defun zotero--quote-% (str)
-  (replace-regexp-in-string "%" "%%" str))
+(defmacro comment (&rest body) nil)
 
 (defun zotero--get-data-dir-from-prefs-js (prefs-js-file-path)
   (with-temp-buffer
@@ -87,36 +81,14 @@
          "\n"
        " "))))
 
-(defun zotero--read-result-line-to-plist (prop-names result-line)
-  (comment
-   (zotero--read-result-line-to-plist
-    ;; prop-names
-    (list 'itemID 'key 'fieldName 'value) 
-    ;; result-line
-    "8	ABCD1234	DOI	10.0000/journal.xyz.12345"))
-  (-interleave
-   prop-names
-   (split-string result-line "\t")))
-
-(defun zotero--exec-sqlite-query
-    (sql-query)
-  (zotero--chomp
-   (shell-command-to-string
-    (format "%s -separator \"\t\" \"file:///%s?mode=ro\" \"%s\""
-            sql-sqlite-program
-            (replace-regexp-in-string "^/" "" zotero-db)
-            sql-query))))
-
 (defun zotero--exec-sqlite-query-to-plist-items
     (sql-query prop-names)
-  (let ((result-string (zotero--exec-sqlite-query sql-query)))
-    (when (< 0 (length result-string))
-      (if (equal "Error: database is locked" result-string)
-          (error result-string)
-        (mapcar
-         (lambda (line)
-           (zotero--read-result-line-to-plist prop-names line))
-         (split-string result-string "\n"))))))
+  (mapcar (lambda (record) (-interleave prop-names record))
+          (esqlite-read
+           (format
+            "file:///%s?mode=ro"
+            (replace-regexp-in-string "^/" "" zotero-db))
+           sql-query)))
 
 (defun zotero--aggregate-items-by-key
     (item-property-row-list)
@@ -349,16 +321,26 @@
 
 (org-add-link-type "zotero" 'org-zotero-link-open 'org-zotero-link-export)
 
-(defun org-zotero-link-open (link)
+(defun org-zotero-link-open (link-text)
   "Open zotero styled link."
-  (zotero-query link))
+  ;; (zotero-query link)
+  (let* ((spl (split-string link-text "::"))
+         (zlink (car spl)))
+    (when (cadr spl)
+      (let* ((pg-spl (split-string (cadr spl) "++"))
+             (pnum (string-to-number (car pg-spl))))
+        (setq zotero-query-buf
+              (plist-put zotero-query-buf :page pnum))))
+    (zotero-query zlink)))
 
 (defun org-zotero-link-export (link description format)
   "FIXME: stub function"
   (concat "link in zotero: " link " (" description ")"))
 
-(defvar zotero-result-buf)
-(defvar zotero-output-buf)
+;; TODO de-uglify
+(defvar zotero-query-buf nil)
+(defvar zotero-result-buf nil)
+(defvar zotero-output-buf nil)
 
 (defhydra zotero-insert-menu (:color pink)
   "what to do with string?"
@@ -387,26 +369,42 @@
                (mapconcat 'identity return-val ", ")
              return-val)))))
 
-(defhydra zotero-result-menu (:color pink :hint nil)
-  "what do you want?"
+(defhydra zotero-result-menu (:hint nil :exit t)
+  "
+what do you want?
+
+^Insert^                       ^Open^
+org-pdfview _l_ink at point    _o_ open with emacs
+_z_otero link at point         _O_ open externally
+_i_d
+_k_ey
+_a_uthors
+_p_ublication
+_t_itle
+ta_g_s
+_f_ile path
+_q_uit
+"
   
   ("o" (lambda ()
          (interactive)
-         (org-open-file (plist-get zotero-result-buf 'filepath) t))
-   "open with emacs!" :exit t)
+         (let* ((fpath (plist-get zotero-result-buf 'filepath))
+                (pnum (plist-get zotero-query-buf 'page)))
+           (org-open-file fpath t)
+           (when pnum
+             (pdf-view-goto-page pnum)
+             (setq zotero-query-buf nil)))))
   
   ("O" (lambda ()
          (interactive)
-         (org-open-file (plist-get zotero-result-buf 'filepath)))
-   "open EXTERNALLY" :exit t)
+         (org-open-file (plist-get zotero-result-buf 'filepath))))
   
   ("l" (lambda ()
          (interactive)
          (save-excursion
            (insert (format "[[pdfview:%s][%s]]"
                            (plist-get zotero-result-buf 'filepath)
-                           (plist-get zotero-result-buf 'title)))))
-   "insert org-pdfview link at point" :exit t)
+                           (plist-get zotero-result-buf 'title))))))
 
   ("z" (lambda ()
          (interactive)
@@ -415,52 +413,44 @@
             (format-org-zotero-link
              (if (plist-get zotero-result-buf 'doi)
                  (concat "doi:" (plist-get zotero-result-buf 'doi))
-               (plist-get zotero-result-buf 'title))))))
-   "insert zotero link at point" :exit t)
+               (plist-get zotero-result-buf 'title)))))))
   
   ("i" (lambda ()
          (interactive)
          (set-zotero-active-result 'id)
-         (zotero-insert-menu/body)) "id"
-         :exit t)
+         (zotero-insert-menu/body)))
 
   ("k" (lambda ()
          (interactive)
          (set-zotero-active-result 'key)
-         (zotero-insert-menu/body)) "key"
-         :exit t)
+         (zotero-insert-menu/body)))
 
   ("a" (lambda ()
          (interactive)
          (set-zotero-active-result 'creators)
-         (zotero-insert-menu/body)) "authors"
-         :exit t)
+         (zotero-insert-menu/body)))
 
   ("p" (lambda ()
          (interactive)
          (set-zotero-active-result 'publicationTitle)
-         (zotero-insert-menu/body)) "publication"
-         :exit t)
+         (zotero-insert-menu/body)))
 
   ("t" (lambda ()
          (interactive)
          (set-zotero-active-result 'title)
-         (zotero-insert-menu/body)) "title"
-         :exit t)
+         (zotero-insert-menu/body)))
 
   ("g" (lambda ()
          (interactive)
          (set-zotero-active-result 'tags)
-         (zotero-insert-menu/body)) "tags"
-         :exit t)
+         (zotero-insert-menu/body)))
 
   ("f" (lambda ()
          (interactive)
          (set-zotero-active-result 'filepath)
-         (zotero-insert-menu/body)) "file path"
-         :exit t)
+         (zotero-insert-menu/body)))
 
-  ("q" nil "cancel"))
+  ("q" nil))
 
 (defun zotero-choose-result (item-list)
   (let* ((counter 0)
@@ -471,7 +461,7 @@
            (zotero-result-menu/body))
           ((< 0 nres)
            (message nil)
-           (let ((selection (string-to-int
+           (let ((selection (string-to-number
                              (char-to-string
                               ;; simple simple menu
                               (read-char
