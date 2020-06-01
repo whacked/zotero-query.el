@@ -1,3 +1,21 @@
+;;; zotero-query.el --- query the Zotero database from emacs
+
+;; Copyright (C) 2014- whacked
+
+;; Author: whacked <whacked@users.noreply.github.com>
+;; Version: 0.0.1
+;; Package-Requires: (esqlite s dash hydra)
+
+;; Keywords: zotero, cite, ref, reference manager, database
+;; URL: https://github.com/whacked/zotero-query.el
+
+;;; Commentary:
+
+;; Provides convenience functions to query the zotero database
+
+;;; Code:
+
+
 ;; for database schema, refer to
 ;; https://github.com/zotero/zotero/blob/master/resource/schema/userdata.sql
 
