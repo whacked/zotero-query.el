@@ -474,7 +474,7 @@ _q_uit
 (defun zotero-choose-result (item-list)
   (let* ((counter 0)
          (nres (length item-list))
-         (nshow (min 9 nres)))
+         (nshow (min 20 nres)))
     (cond ((= 1 nres)
            (setq zotero-result-buf (elt item-list 0))
            (zotero-result-menu/body))
@@ -511,7 +511,10 @@ _q_uit
           do
           ;; filter out items that don't have a title or an attachment
           (when (and (plist-get item-data 'title)
-                     (plist-get item-data 'attachmentKey))
+                     (plist-get item-data 'attachmentKey)
+                     (plist-get item-data 'attachmentPath)
+                     (not (eq (plist-get item-data 'attachmentPath)
+                              :null)))
             (setq out
                   (cons
                    (plist-put
