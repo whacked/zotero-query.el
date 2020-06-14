@@ -22,6 +22,7 @@
 (require 'cl)
 (require 'dash)
 (require 'esqlite)
+(require 'hydra)
 (require 's)
 (require 'sql)
 
@@ -719,3 +720,5 @@ _q_uit
               (sort (pdf-info-getannots nil filepath)
                     'pdf-annot-compare-annotations))
         (pdf-annot-menu/body)))))
+
+(provide 'zotero-query)
