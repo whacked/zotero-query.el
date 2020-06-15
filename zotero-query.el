@@ -117,6 +117,24 @@
       (:key "abc" :date "2018-02-03")
       (:key "xyz" :title "other title")))))
 
+(setq zotero--sql-tags-join-string
+      (concat
+       ;; get tags
+       " LEFT OUTER JOIN"
+       " (SELECT itemTags.itemID, GROUP_CONCAT(tags.name, ', ') AS tags"
+       "  FROM tags"
+       "  JOIN itemTags ON itemTags.tagID = tags.tagID"
+       "  GROUP BY itemTags.itemID)"))
+
+(setq zotero--sql-creators-join-string
+      (concat
+       ;; get authors (creators)
+       " LEFT OUTER JOIN"
+       " (SELECT itemCreators.itemID, GROUP_CONCAT(creators.lastName, ', ') AS creators"
+       "  FROM itemCreators"
+       "  JOIN creators ON creators.creatorID = itemCreators.creatorID"
+       "  GROUP BY itemCreators.itemID)"))
+
 (defun zotero-query-by-tags-and-creators-and-filenames
     (query-string)
   ;; looks for matching substring in
@@ -142,19 +160,9 @@
            " JOIN itemData ON itemData.itemID = items.itemID"
            " JOIN itemDataValues ON itemDataValues.valueID = itemData.valueID"
            " JOIN fields ON fields.fieldID = itemData.fieldID"
-           ;; get tags
-           " LEFT OUTER JOIN"
-           " (SELECT itemTags.itemID, GROUP_CONCAT(tags.name, ', ') AS tags"
-           "  FROM tags"
-           "  JOIN itemTags ON itemTags.tagID = tags.tagID"
-           "  GROUP BY itemTags.itemID)"
+           zotero--sql-tags-join-string
            " AS tagsQ ON tagsQ.itemID = items.itemID"
-           ;; get authors (creators)
-           " LEFT OUTER JOIN"
-           " (SELECT itemCreators.itemID, GROUP_CONCAT(creators.lastName, ', ') AS creators"
-           "  FROM itemCreators"
-           "  JOIN creators ON creators.creatorID = itemCreators.creatorID"
-           "  GROUP BY itemCreators.itemID)"
+           zotero--sql-creators-join-string
            " AS creatorsQ on creatorsQ.itemID = items.itemID"
            ;; get attachments
            " JOIN itemAttachments ON itemAttachments.parentItemID = items.itemID"
@@ -184,17 +192,24 @@
          (format
           (zotero--concat-sql-statements
            " SELECT"
-           "  items.itemID"
+           ;; "  items.itemID"
+           "  itemAttachments.itemID"
            " ,items.key"
-           " ,fields.fieldName"
-           " ,itemDataValues.value"
+           " ,items.dateModified"
+           " ,tags"
+           " ,creators"
            " ,attachmentItems.key AS attachmentKey"
            " ,itemAttachments.path AS attachmentPath"
+           " ,fields.fieldName"
+           " ,itemDataValues.value"
            " FROM items"
            " JOIN itemData ON itemData.itemID = items.itemID"
            " JOIN itemDataValues ON itemDataValues.valueID = itemData.valueID"
            " JOIN fields ON fields.fieldID = itemData.fieldID"
-           " LEFT OUTER JOIN itemTags ON itemTags.itemID = items.itemID"
+           zotero--sql-tags-join-string
+           " AS tagsQ ON tagsQ.itemID = items.itemID"
+           zotero--sql-creators-join-string
+           " AS creatorsQ on creatorsQ.itemID = items.itemID"
            ;; get attachments
            " JOIN itemAttachments ON itemAttachments.parentItemID = items.itemID"
            " JOIN items AS attachmentItems ON attachmentItems.itemID = itemAttachments.itemID"
@@ -203,14 +218,15 @@
             ;; TODO: possibly support doi-only
             ;; " AND fields.fieldName = 'DOI'"
             " AND LOWER(itemDataValues.value) LIKE LOWER('%%%s%%')")
-           " GROUP BY items.itemID, fields.fieldName"
+           ;; " GROUP BY items.itemID, fields.fieldName"
+           " GROUP BY items.itemID, fields.fieldName, itemAttachments.contentType"
            " ORDER BY items.itemID ASC"
            " LIMIT 20")
           query-string)))
     (let ((item-property-row-list
            (zotero--exec-sqlite-query-to-plist-items
             sql-query
-            '(itemID key fieldName value attachmentKey attachmentPath)))
+            '(itemID key dateModified tags creators attachmentKey attachmentPath fieldName value)))
           out)
       (dolist (item-property-row item-property-row-list out)
         ;; WARNING!
@@ -228,7 +244,7 @@
                    item-data
                    (mapcar (lambda (k)
                              (list k (plist-get item-property-row k)))
-                           '(title attachmentKey attachmentPath)))
+                           '(itemID key dateModified title tags creators attachmentKey attachmentPath)))
                   (intern (plist-get item-property-row 'fieldName))
                   (plist-get item-property-row 'value)))))))))
 
@@ -243,9 +259,11 @@
            "  parentItems.itemID"
            " ,parentItems.key,parentItems.dateModified"
            " ,itemDataValues.value AS title"
-           " ,fulltextWords.word"
+           " ,tags"
+           " ,creators"
            " ,attachmentItems.key AS attachmentKey"
            " ,itemAttachments.path AS attachmentPath"
+           " ,fulltextWords.word"
            " FROM fulltextWords"
            " JOIN fulltextItemWords ON fulltextWords.wordID = fulltextItemWords.wordID"
            " JOIN items AS attachmentItems ON fulltextItemWords.itemID = attachmentItems.itemID"
@@ -257,6 +275,10 @@
            " JOIN itemData ON parentItems.itemID = itemData.itemID"
            " JOIN itemDataValues ON itemData.valueID = itemDataValues.valueID"
            " JOIN fields ON itemData.fieldID = fields.fieldID"
+           zotero--sql-tags-join-string
+           " AS tagsQ ON tagsQ.itemID = parentItems.itemID"
+           zotero--sql-creators-join-string
+           " AS creatorsQ on creatorsQ.itemID = parentItems.itemID"
            " WHERE 1"
            " AND itemTypes.typeName = 'attachment'"
            " AND fields.fieldName = 'title'"
@@ -266,7 +288,7 @@
           search-word)))
     (zotero--exec-sqlite-query-to-plist-items
      sql-query
-     '(itemID key dateModified title word 'attachmentKey 'attachmentPath))))
+     '(itemID key dateModified title tags creators attachmentKey attachmentPath word))))
 
 (defun zotero-query-any
     (query-string)
@@ -489,11 +511,16 @@ _q_uit
                                         nres nshow)
                                        (mapconcat #'(lambda (item)
                                                       (incf counter)
-                                                      (format "[%s] %s (%s)"
-                                                              (propertize (number-to-string counter)
-                                                                          'face '(:foreground "SkyBlue"))
-                                                              (plist-get item 'title)
-                                                              (plist-get item 'creators)))
+                                                      (let ((extension (car
+                                                                        (last (s-split
+                                                                               "\\."
+                                                                               (plist-get item 'attachmentPath))))))
+                                                        (format "[%s] <%s> %s (%s)"
+                                                                (propertize (number-to-string counter)
+                                                                            'face '(:foreground "SkyBlue"))
+                                                                extension
+                                                                (plist-get item 'title)
+                                                                (plist-get item 'creators))))
                                                   (subseq item-list 0 nshow) "\n")))))))
              (if (and (< 0 selection)
                       (<= selection nres))
