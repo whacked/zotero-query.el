@@ -495,39 +495,35 @@ _q_uit
 
 (defun zotero-choose-result (item-list)
   (let* ((counter 0)
-         (nres (length item-list))
-         (nshow (min 20 nres)))
+         (nres (length item-list)))
     (cond ((= 1 nres)
            (setq zotero-result-buf (elt item-list 0))
            (zotero-result-menu/body))
           ((< 0 nres)
-           (message nil)
-           (let ((selection (string-to-number
-                             (char-to-string
-                              ;; simple simple menu
-                              (read-char
-                               (concat (format
-                                        "%s results (%s shown), what do?\n"
-                                        nres nshow)
-                                       (mapconcat #'(lambda (item)
-                                                      (incf counter)
-                                                      (let ((extension (car
-                                                                        (last (s-split
-                                                                               "\\."
-                                                                               (plist-get item 'attachmentPath))))))
-                                                        (format "[%s] <%s> %s (%s)"
-                                                                (propertize (number-to-string counter)
-                                                                            'face '(:foreground "SkyBlue"))
-                                                                extension
-                                                                (plist-get item 'title)
-                                                                (plist-get item 'creators))))
-                                                  (subseq item-list 0 nshow) "\n")))))))
-             (if (and (< 0 selection)
-                      (<= selection nres))
-                 (progn
-                   (setq zotero-result-buf (elt item-list (1- selection)))
-                   (zotero-result-menu/body))
-               (message "invalid selection")))))))
+           (helm
+            :sources `((name . ,(format "query choice from %s matches: " nres))
+                       (candidates . ,(mapcar #'(lambda (item)
+                                                  (incf counter)
+                                                  (let ((extension (car
+                                                                    (last (s-split
+                                                                           "\\."
+                                                                           (plist-get item 'attachmentPath)))))
+                                                        (creators (plist-get item 'creators)))
+                                                    (cons (format "%2s (%5s) %4s %s (%s)"
+                                                                  (propertize (number-to-string counter)
+                                                                              'face '(:foreground "blue"))
+                                                                  (propertize (plist-get item 'itemID)
+                                                                              'face '(:foreground "SkyBlue"))
+                                                                  (propertize extension 'face '(:foreground "red"))
+                                                                  (plist-get item 'title)
+                                                                  (if (not (eq creators :null))
+                                                                      (propertize creators 'face '(:foreground "orange"))
+                                                                    (propertize "N/A" 'face '(:foreground "DarkGray"))))
+                                                          item)))
+                                              item-list))
+                       (action . (lambda (selection)
+                                   (setq zotero-result-buf selection)
+                                   (zotero-result-menu/body)))))))))
 
 (defun zotero--combined-query-result-to-choice-list
     (query-result)
