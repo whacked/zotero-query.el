@@ -768,4 +768,85 @@ _q_uit
                     'pdf-annot-compare-annotations))
         (pdf-annot-menu/body)))))
 
+(defvar zotero--display-headers
+  '[("dateModified" 12 t)
+    ("itemID" 6 t)
+    ("attachmentPath" 5 t)
+    ("creators" 40 t)
+    ("title" 0 t)])
+
+(define-derived-mode zotero-query-quick-browser-mode
+  tabulated-list-mode
+  "zotero-query-quick-browser"
+  "Quick list of entries from the Zotero database"
+  
+  (setq tabulated-list-format zotero--display-headers)
+  (setq tabulated-list-padding 1)
+  (setq tabulated-list-sort-key (cons "dateModified" t))
+  (tabulated-list-init-header))
+
+(defun zotero-load-quick-browser ()
+  (interactive)
+  (pop-to-buffer "*zotero-query-quick-browser*" nil)
+  (zotero-query-quick-browser-mode)
+  (define-key zotero-query-quick-browser-mode-map (kbd "j") 'next-line)
+  (define-key zotero-query-quick-browser-mode-map (kbd "k") 'previous-line)
+  (define-key zotero-query-quick-browser-mode-map (kbd "RET")
+    (lambda ()
+      (interactive)
+      
+      (let* ((selected-entry (tabulated-list-get-entry))
+             (attachment-path-index
+              (catch 'index
+                (let ((item-index 0))
+                  (dolist (header-spec (append zotero--display-headers nil))
+                    (if (string= (first header-spec) "attachmentPath")
+                        (throw 'index item-index)
+                      (setq item-index (1+ item-index)))))))
+             (selected-entry-extension
+              (aref selected-entry attachment-path-index))
+             (maybe-best-match
+              (first
+               (-filter
+                (lambda (rec)
+                  (string= selected-entry-extension
+                           (zotero--get-attachment-extension rec)))
+                (zotero-query-by-item-id (tabulated-list-get-id))))))
+        (when maybe-best-match
+          (setq zotero-result-buf
+                (plist-put
+                 maybe-best-match
+                 'filepath
+                 (zotero--get-attachment-key-path-filepath
+                  (plist-get maybe-best-match 'attachmentKey)
+                  (plist-get maybe-best-match 'attachmentPath))))
+          (zotero-result-menu/body)))))
+  
+  (setq tabulated-list-entries
+        (mapcar
+         (lambda (record)
+           (list (plist-get record 'itemID)
+                 (vconcat
+                  (mapcar (lambda (header-spec)
+                            (let* ((key (intern (car header-spec)))
+                                   (value (plist-get record key)))
+                              (cond ((eq value :null)
+                                     "")
+                                    ((or (eq key 'dateAdded)
+                                         (eq key 'dateModified))
+                                     (substring value 0 10))
+                                    ((eq key 'attachmentPath)
+                                     (zotero--get-attachment-extension record))
+                                    (t value))))
+                          zotero--display-headers))))
+         (zotero--combined-query-result-to-choice-list
+          (zotero--exec-sqlite-query-to-plist-items
+           (zotero--concat-sql-statements
+            zotero--base-query-item-select-from
+            "AND fields.fieldName = 'title'"
+            "ORDER BY items.itemID DESC")
+           zotero--base-query-item-select-fields))))
+  (tabulated-list-print t))
+
+
 (provide 'zotero-query)
