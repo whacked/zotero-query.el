@@ -135,6 +135,45 @@
        "  JOIN creators ON creators.creatorID = itemCreators.creatorID"
        "  GROUP BY itemCreators.itemID)"))
 
+(setq zotero--base-query-item-select-fields
+      '(itemID key dateAdded dateModified title tags creators attachmentKey attachmentPath))
+(setq zotero--base-query-item-select-from
+      (zotero--concat-sql-statements
+       " SELECT"
+       "  items.itemID"
+       " ,items.key"
+       " ,items.dateAdded"
+       " ,items.dateModified"
+       " ,itemDataValues.value AS title"
+       " ,tags"
+       " ,creators"
+       " ,attachmentItems.key AS attachmentKey"
+       " ,itemAttachments.path AS attachmentPath"
+       " FROM items"
+       ;; get the entry title
+       " JOIN itemData ON itemData.itemID = items.itemID"
+       " JOIN itemDataValues ON itemDataValues.valueID = itemData.valueID"
+       " JOIN fields ON fields.fieldID = itemData.fieldID"
+       zotero--sql-tags-join-string
+       " AS tagsQ ON tagsQ.itemID = items.itemID"
+       zotero--sql-creators-join-string
+       " AS creatorsQ on creatorsQ.itemID = items.itemID"
+       ;; get attachments
+       " JOIN itemAttachments ON itemAttachments.parentItemID = items.itemID"
+       " JOIN items AS attachmentItems ON attachmentItems.itemID = itemAttachments.itemID"
+       " WHERE TRUE"))
+
+(defun zotero-query-by-item-id
+    (item-id)
+  (let ((sql-query
+         (format
+          (zotero--concat-sql-statements
+           zotero--base-query-item-select-from
+           "AND items.itemID = %s")
+          item-id)))
+    (zotero--exec-sqlite-query-to-plist-items
+     sql-query zotero--base-query-item-select-fields)))
+
 (defun zotero-query-by-tags-and-creators-and-filenames
     (query-string)
   ;; looks for matching substring in
@@ -147,29 +186,10 @@
   (let ((sql-query
          (format
           (zotero--concat-sql-statements
-           " SELECT"
-           "  items.itemID"
-           " ,items.key,items.dateModified"
-           " ,itemDataValues.value AS title"
-           " ,tags"
-           " ,creators"
-           " ,attachmentItems.key AS attachmentKey"
-           " ,itemAttachments.path AS attachmentPath"
-           " FROM items"
-           ;; get the entry title
-           " JOIN itemData ON itemData.itemID = items.itemID"
-           " JOIN itemDataValues ON itemDataValues.valueID = itemData.valueID"
-           " JOIN fields ON fields.fieldID = itemData.fieldID"
-           zotero--sql-tags-join-string
-           " AS tagsQ ON tagsQ.itemID = items.itemID"
-           zotero--sql-creators-join-string
-           " AS creatorsQ on creatorsQ.itemID = items.itemID"
-           ;; get attachments
-           " JOIN itemAttachments ON itemAttachments.parentItemID = items.itemID"
-           " JOIN items AS attachmentItems ON attachmentItems.itemID = itemAttachments.itemID"
-           " WHERE (   LOWER(tags)     = LOWER('%%%s%%')"
-           "        OR LOWER(creators) LIKE LOWER('%%%s%%')"
-           "        OR LOWER(itemAttachments.path) LIKE LOWER('%%%s%%'))"
+           zotero--base-query-item-select-from
+           " AND (   LOWER(tags)     = LOWER('%%%s%%')"
+           "      OR LOWER(creators) LIKE LOWER('%%%s%%')"
+           "      OR LOWER(itemAttachments.path) LIKE LOWER('%%%s%%'))"
            " AND fields.fieldName = 'title'"
            " LIMIT 20")
           query-string
@@ -177,8 +197,7 @@
           query-string
           )))
     (zotero--exec-sqlite-query-to-plist-items
-     sql-query
-     '(itemID key dateModified title tags creators attachmentKey attachmentPath))))
+     sql-query zotero--base-query-item-select-fields)))
 
 (defun zotero-query-by-attributes
     (query-string)
@@ -195,6 +214,7 @@
            ;; "  items.itemID"
            "  itemAttachments.itemID"
            " ,items.key"
+           " ,items.dateAdded"
            " ,items.dateModified"
            " ,tags"
            " ,creators"
@@ -226,7 +246,7 @@
     (let ((item-property-row-list
            (zotero--exec-sqlite-query-to-plist-items
             sql-query
-            '(itemID key dateModified tags creators attachmentKey attachmentPath fieldName value)))
+            '(itemID key dateAdded dateModified tags creators attachmentKey attachmentPath fieldName value)))
           out)
       (dolist (item-property-row item-property-row-list out)
         ;; WARNING!
@@ -244,7 +264,7 @@
                    item-data
                    (mapcar (lambda (k)
                              (list k (plist-get item-property-row k)))
-                           '(itemID key dateModified title tags creators attachmentKey attachmentPath)))
+                           zotero--base-query-item-select-fields))
                   (intern (plist-get item-property-row 'fieldName))
                   (plist-get item-property-row 'value)))))))))
 
@@ -257,7 +277,7 @@
            " SELECT"
            ;; NOTE, the target item is the PARENT, not the attachment item!
            "  parentItems.itemID"
-           " ,parentItems.key,parentItems.dateModified"
+           " ,parentItems.key, parentItems.dateAdded, parentItems.dateModified"
            " ,itemDataValues.value AS title"
            " ,tags"
            " ,creators"
@@ -288,7 +308,7 @@
           search-word)))
     (zotero--exec-sqlite-query-to-plist-items
      sql-query
-     '(itemID key dateModified title tags creators attachmentKey attachmentPath word))))
+     (append zotero--base-query-item-select-fields '(word)))))
 
 (defun zotero-query-any
     (query-string)
@@ -493,6 +513,9 @@ _q_uit
 
   ("q" nil))
 
+(defun zotero--get-attachment-extension (zotero-entry)
+  (file-name-extension (plist-get zotero-entry 'attachmentPath)))
+
 (defun zotero-choose-result (item-list)
   (let* ((counter 0)
          (nres (length item-list)))
@@ -504,10 +527,7 @@ _q_uit
             :sources `((name . ,(format "query choice from %s matches: " nres))
                        (candidates . ,(mapcar #'(lambda (item)
                                                   (incf counter)
-                                                  (let ((extension (car
-                                                                    (last (s-split
-                                                                           "\\."
-                                                                           (plist-get item 'attachmentPath)))))
+                                                  (let ((extension (zotero--get-attachment-extension item))
                                                         (creators (plist-get item 'creators)))
                                                     (cons (format "%2s (%5s) %4s %s (%s)"
                                                                   (propertize (number-to-string counter)
@@ -557,6 +577,7 @@ _q_uit
 ;; attachmentPath
 ;; url
 ;; key
+;; dateAdded
 ;; dateModified
 ;; title
 ;; tags
