@@ -13,12 +13,18 @@
    - =M-x pdf-annot-trigger= on =pdfview= link
      - insert text extraction of annotations in pdf
      - select specific text annotation from =helm= menu + insert
-   
+   - interaction with =pdf-tools= to load annotations from =zotero= link
+
+   [[file:https://user-images.githubusercontent.com/33410/104944629-73853700-59f2-11eb-9a31-c6caebfa656e.gif]]
+
 ** dependencies
 
    - sql.el (Emacs included, in progmodes)
+   - [[https://github.com/emacs-helm/helm][helm]]
    - [[https://github.com/magnars/dash.el][dash]]
+   - [[https://github.com/mhayashi1120/Emacs-esqlite][esqlite]]
    - [[https://github.com/abo-abo/hydra][abo-abo's hydra]]
+   - [[https://github.com/magnars/s.el][s]]
 
 ** Zotero database location
    

@@ -174,6 +174,11 @@
     (zotero--exec-sqlite-query-to-plist-items
      sql-query zotero--base-query-item-select-fields)))
 
+(defun zotero-escape-elisp-percent (s)
+  (replace-regexp-in-string
+   "%" "%%"
+   s))
+
 (defun zotero-query-by-tags-and-creators-and-filenames
     (query-string)
   ;; looks for matching substring in
@@ -186,7 +191,8 @@
   (let ((sql-query
          (format
           (zotero--concat-sql-statements
-           zotero--base-query-item-select-from
+           (zotero-escape-elisp-percent
+            zotero--base-query-item-select-from)
            " AND (   LOWER(tags)     = LOWER('%%%s%%')"
            "      OR LOWER(creators) LIKE LOWER('%%%s%%')"
            "      OR LOWER(itemAttachments.path) LIKE LOWER('%%%s%%'))"
@@ -402,6 +408,17 @@
 (defvar zotero-query-buf nil)
 (defvar zotero-result-buf nil)
 (defvar zotero-output-buf nil)
+(defvar zotero-result-header-text nil)
+
+(defun swap-zotero-result-buf (zotero-item)
+  (setq zotero-result-buf zotero-item)
+  (setq zotero-result-header-text
+        (let ((filename (file-name-nondirectory
+                         (plist-get zotero-result-buf 'filepath)))
+              (num-annotations
+               (zotero-query--get-total-annotations
+                (plist-get zotero-result-buf 'filepath))))
+          (format "[%d annotations]: %s" num-annotations filename))))
 
 (defhydra zotero-insert-menu (:color pink)
   "what to do with string?"
@@ -432,12 +449,12 @@
 
 (defhydra zotero-result-menu (:hint nil :exit t)
   "
-what do you want?
+%s`zotero-result-header-text
 
 ^Insert^                       ^Open^
 org-pdfview _l_ink at point    _o_ open with emacs
 _z_otero link at point         _O_ open externally
-_i_d
+_i_d                           _A_ annotation browser
 _k_ey
 _a_uthors
 _p_ublication
@@ -459,6 +476,11 @@ _q_uit
   ("O" (lambda ()
          (interactive)
          (org-open-file (plist-get zotero-result-buf 'filepath))))
+  
+  ("A" (lambda ()
+         (interactive)
+         (zotero-query--show-annotations-selector
+          (plist-get zotero-result-buf 'filepath))))
   
   ("l" (lambda ()
          (interactive)
@@ -520,7 +542,7 @@ _q_uit
   (let* ((counter 0)
          (nres (length item-list)))
     (cond ((= 1 nres)
-           (setq zotero-result-buf (elt item-list 0))
+           (swap-zotero-result-buf (elt item-list 0))
            (zotero-result-menu/body))
           ((< 0 nres)
            (helm
@@ -542,7 +564,7 @@ _q_uit
                                                           item)))
                                               item-list))
                        (action . (lambda (selection)
-                                   (setq zotero-result-buf selection)
+                                   (swap-zotero-result-buf selection)
                                    (zotero-result-menu/body)))))))))
 
 (defun zotero--combined-query-result-to-choice-list
@@ -813,7 +835,7 @@ _q_uit
                            (zotero--get-attachment-extension rec)))
                 (zotero-query-by-item-id (tabulated-list-get-id))))))
         (when maybe-best-match
-          (setq zotero-result-buf
+          (swap-zotero-result-buf
                 (plist-put
                  maybe-best-match
                  'filepath
@@ -847,6 +869,79 @@ _q_uit
             "ORDER BY items.itemID DESC")
            zotero--base-query-item-select-fields))))
   (tabulated-list-print t))
+
+
+(defun zotero-query--pdf-tools-extract-highlight-text (pdf-tools-annotation-item)
+  ;; ref org-noter.el:org-noter-create-skeleton()
+  ;; [[file:~/.emacs.d/elpa/org-noter-20191020.1212/org-noter.el::(defun org-noter-create-skeleton ()][org-noter.el:org-noter-create-skeleton]]
+  (let* ((item pdf-tools-annotation-item)
+         (type  (alist-get 'type item))
+         (page  (alist-get 'page item))
+         (edges (or (org-noter--pdf-tools-edges-to-region (alist-get 'markup-edges item))
+                    (alist-get 'edges item)))
+         (top (nth 1 edges)))
+    (if (eq type 'link)
+        ""
+      (pdf-info-gettext page edges))))
+
+(defun zotero-query--get-pdf-annotations (pdf-file-path)
+  (let ((cur-buffer (current-buffer))
+        (annots (list)))
+    (save-excursion
+      (dolist (item (progn
+                      (find-file pdf-file-path)
+                      (pdf-info-getannots)))
+        (when (not (eq (alist-get 'type item) 'link))
+          (add-to-list
+           'annots
+           (push (cons 'highlight-text
+                       (zotero-query--pdf-tools-extract-highlight-text item))
+                 item))))
+      (switch-to-buffer cur-buffer)
+      (sort
+       annots
+       (lambda (a b)
+         (< (alist-get 'page a)
+            (alist-get 'page b)))))))
+
+(defun zotero-query--get-annotations-summary (pdf-file-path)
+  (let ((annots (zotero-query--get-pdf-annotations pdf-file-path)))
+    (list
+     (cons 'total (length annots)))))
+
+(defun zotero-query--get-total-annotations (pdf-file-path)
+  (alist-get 'total (zotero-query--get-annotations-summary pdf-file-path)))
+
+(defun zotero-query--show-annotations-selector (pdf-file-path)
+  (helm
+   :sources `((name . ,(file-name-nondirectory pdf-file-path))
+              (candidates . ,(mapcar (lambda (pdf-tools-annotation-item)
+                                       (let* ((highlight-text
+                                               (zotero-escape-elisp-percent
+                                                (s-collapse-whitespace
+                                                 (alist-get 'highlight-text pdf-tools-annotation-item))))
+                                              (maybe-note-text (alist-get 'contents pdf-tools-annotation-item))
+                                              (note-text
+                                               (if (< 0 (length maybe-note-text))
+                                                   (format "%s / "
+                                                           (propertize
+                                                            (s-replace
+                                                             "%" "%%"
+                                                             (s-trim maybe-note-text))
+                                                            'face '(:foreground "orange")))
+                                                 "")))
+                                         (cons
+                                          (format
+                                           "%s%s"
+                                           note-text
+                                           (propertize highlight-text
+                                                       'face '(:foreground "DimGray")))
+                                          pdf-tools-annotation-item)))
+                                     (zotero-query--get-pdf-annotations pdf-file-path)))
+              (action . (lambda (selection)
+                          (find-file-other-window pdf-file-path)
+                          (pdf-view-goto-page (alist-get 'page selection)))))))
+
 
 
 (provide 'zotero-query)
