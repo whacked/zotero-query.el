@@ -135,9 +135,52 @@
        "  JOIN creators ON creators.creatorID = itemCreators.creatorID"
        "  GROUP BY itemCreators.itemID)"))
 
-(setq zotero--base-query-item-select-fields
-      '(itemID key dateAdded dateModified title tags creators attachmentKey attachmentPath))
-(setq zotero--base-query-item-select-from
+(defun get-plist-keys (input-plist)
+  (let ((out (list)))
+    (loop for (k v)
+          on input-plist by (function cddr)
+          do
+          (setq out (cons k out)))
+    out))
+
+(setq zotero--special-properties-tables-query-plist
+      ;; table-name --> join query on itemID
+      (list
+       'example (zotero--concat-sql-statements
+                 "SELECT itemTags.itemID"
+                 ", CASE WHEN tags.name LIKE 'example-%' THEN"
+                 "'CUSTOM-EXAMPLE'"
+                 "ELSE"
+                 "  ' '"
+                 "END AS example"
+                 "FROM tags"
+                 "JOIN itemTags ON itemTags.tagID = tags.tagID"
+                 "WHERE tags.name IN ('example-1', 'example-2')"
+                 "GROUP BY itemTags.itemID")
+       ))
+
+(defun zotero-get-special-properties-tables-selects
+    (mapping-plist)
+  (let ((out ""))
+    (loop for (table-name _query)
+          on mapping-plist by (function cddr)
+          do
+          (setq out (concat out (format ", %s" table-name))))
+    out))
+
+(defun zotero-get-special-properties-joins
+    (mapping-plist)
+  (let ((out ""))
+    (loop for (table-name query)
+          on mapping-plist by (function cddr)
+          do
+          (setq out
+                (concat out
+                        (format " JOIN (%s) AS %sQ on %sQ.itemID = items.itemID"
+                                query table-name table-name))))
+    out))
+
+(setq zotero--id-date-key-title-select
       (zotero--concat-sql-statements
        " SELECT"
        "  items.itemID"
@@ -148,12 +191,28 @@
        " ,tags"
        " ,creators"
        " ,attachmentItems.key AS attachmentKey"
-       " ,itemAttachments.path AS attachmentPath"
+       " ,itemAttachments.path AS attachmentPath"))
+
+(setq zotero--id-date-key-title-select-fields
+      '(itemID key dateAdded dateModified title tags creators attachmentKey attachmentPath))
+
+(setq zotero--base-query-item-select-fields
+      (append
+       zotero--id-date-key-title-select-fields
+       (get-plist-keys zotero--special-properties-tables-query-plist)))
+
+(setq zotero--base-query-item-select-from
+      (zotero--concat-sql-statements
+       zotero--id-date-key-title-select
+       (zotero-get-special-properties-tables-selects
+        zotero--special-properties-tables-query-plist)
        " FROM items"
        ;; get the entry title
        " JOIN itemData ON itemData.itemID = items.itemID"
        " JOIN itemDataValues ON itemDataValues.valueID = itemData.valueID"
        " JOIN fields ON fields.fieldID = itemData.fieldID"
+       (zotero-get-special-properties-joins
+        zotero--special-properties-tables-query-plist)
        zotero--sql-tags-join-string
        " AS tagsQ ON tagsQ.itemID = items.itemID"
        zotero--sql-creators-join-string
@@ -166,11 +225,9 @@
 (defun zotero-query-by-item-id
     (item-id)
   (let ((sql-query
-         (format
-          (zotero--concat-sql-statements
-           zotero--base-query-item-select-from
-           "AND items.itemID = %s")
-          item-id)))
+         (zotero--concat-sql-statements
+          zotero--base-query-item-select-from
+          (format "AND items.itemID = %s" item-id))))
     (zotero--exec-sqlite-query-to-plist-items
      sql-query zotero--base-query-item-select-fields)))
 
@@ -206,7 +263,7 @@
      sql-query zotero--base-query-item-select-fields)))
 
 (defun zotero-query-by-attributes
-    (query-string)
+    (query-string &optional field-name)
   ;; looks for matching substring by any of zotero's itemDataValues.value
   ;; returns a property list of (item-key -> item-plist) mappings, like
   ;; (1 (itemID 1 key ABCD
@@ -214,45 +271,45 @@
   ;;  9 (itemID 9 key ZXCV
   ;;     title "tied toll" ...) ...)
   (let ((sql-query
-         (format
-          (zotero--concat-sql-statements
-           " SELECT"
-           ;; "  items.itemID"
-           "  itemAttachments.itemID"
-           " ,items.key"
-           " ,items.dateAdded"
-           " ,items.dateModified"
-           " ,tags"
-           " ,creators"
-           " ,attachmentItems.key AS attachmentKey"
-           " ,itemAttachments.path AS attachmentPath"
-           " ,fields.fieldName"
-           " ,itemDataValues.value"
-           " FROM items"
-           " JOIN itemData ON itemData.itemID = items.itemID"
-           " JOIN itemDataValues ON itemDataValues.valueID = itemData.valueID"
-           " JOIN fields ON fields.fieldID = itemData.fieldID"
-           zotero--sql-tags-join-string
-           " AS tagsQ ON tagsQ.itemID = items.itemID"
-           zotero--sql-creators-join-string
-           " AS creatorsQ on creatorsQ.itemID = items.itemID"
-           ;; get attachments
-           " JOIN itemAttachments ON itemAttachments.parentItemID = items.itemID"
-           " JOIN items AS attachmentItems ON attachmentItems.itemID = itemAttachments.itemID"
-           " WHERE 1"
-           (concat
-            ;; TODO: possibly support doi-only
-            ;; " AND fields.fieldName = 'DOI'"
-            " AND LOWER(itemDataValues.value) LIKE LOWER('%%%s%%')")
-           ;; " GROUP BY items.itemID, fields.fieldName"
-           " GROUP BY items.itemID, fields.fieldName, itemAttachments.contentType"
-           " ORDER BY items.itemID ASC"
-           " LIMIT 20")
-          query-string)))
+         (zotero--concat-sql-statements
+          zotero--id-date-key-title-select
+          ;; standard fields (title)
+          " ,ATTR_fields.fieldName"
+          " ,ATTR_itemDataValues.value"
+          " FROM items"
+          " JOIN itemData ON itemData.itemID = items.itemID"
+          " JOIN itemDataValues ON itemDataValues.valueID = itemData.valueID"
+          " JOIN fields ON fields.fieldID = itemData.fieldID"
+          ;; specific field
+          " JOIN itemData AS ATTR_itemData ON ATTR_itemData.itemID = items.itemID"
+          " JOIN itemDataValues AS ATTR_itemDataValues ON ATTR_itemDataValues.valueID = ATTR_itemData.valueID"
+          " JOIN fields AS ATTR_fields ON ATTR_fields.fieldID = ATTR_itemData.fieldID"
+          zotero--sql-tags-join-string
+          " AS tagsQ ON tagsQ.itemID = items.itemID"
+          zotero--sql-creators-join-string
+          " AS creatorsQ on creatorsQ.itemID = items.itemID"
+          ;; get attachments
+          " JOIN itemAttachments ON itemAttachments.parentItemID = items.itemID"
+          " JOIN items AS attachmentItems ON attachmentItems.itemID = itemAttachments.itemID"
+          " WHERE 1"
+          (cond ;; support for specific fields
+           ((null field-name) "")
+           ((string= (downcase field-name) "doi") " AND ATTR_fields.fieldName = 'DOI'")
+           (t (format " AND ATTR_fields.fieldName = '%s'" (upcase field-name))))
+          (format
+           " AND LOWER(ATTR_itemDataValues.value) LIKE LOWER('%%%s%%')"
+           query-string)
+          " AND fields.fieldName = 'title'"
+          ;; " GROUP BY items.itemID, fields.fieldName"
+          " GROUP BY items.itemID, ATTR_fields.fieldName, itemAttachments.contentType"
+          " ORDER BY items.itemID ASC"
+          " LIMIT 20")))
     (let ((item-property-row-list
            (zotero--exec-sqlite-query-to-plist-items
             sql-query
-            '(itemID key dateAdded dateModified tags creators attachmentKey attachmentPath fieldName value)))
+            (append
+             zotero--id-date-key-title-select-fields
+             '(fieldName value))))
           out)
       (dolist (item-property-row item-property-row-list out)
         ;; WARNING!
@@ -390,7 +447,7 @@
 
 (defun org-zotero-link-open (link-text)
   "Open zotero styled link."
-  ;; (zotero-query link)
+  ;; (zotero-query "title or author or fulltext string... but probably title/author")  ;;  see zotero-query-any()
   (let* ((spl (split-string link-text "::"))
          (zlink (car spl)))
     (when (cadr spl)
