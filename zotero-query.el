@@ -19,6 +19,15 @@
 ;; for database schema, refer to
 ;; https://github.com/zotero/zotero/blob/master/resource/schema/userdata.sql
 
+;; to enable annotations integration
+;; if this throws, you must run `pdf-tools-install` to success
+;; (pdf-info-check-epdfinfo)
+;; the error would be
+;; Debugger entered--Lisp error: (error "pdf-info-epdfinfo-program is not executable")
+;; to check manually, make sure (likely candidate) exists:
+;; $HOME/.emacs.d/elpa/pdf-tools-*.*/epdfinfo
+;; and it is executable
+
 (require 'cl)
 (require 'dash)
 (require 'esqlite)
@@ -595,7 +604,7 @@ _q_uit
 (defun zotero--get-attachment-extension (zotero-entry)
   (file-name-extension (plist-get zotero-entry 'attachmentPath)))
 
-(defun zotero-choose-result (item-list)
+(defun zotero--choose-result (item-list)
   (let* ((counter 0)
          (nres (length item-list)))
     (cond ((= 1 nres)
@@ -680,7 +689,7 @@ _q_uit
          (return-key :filepath))
     (let ((item-list (zotero--combined-query-result-to-choice-list
                       (zotero-query-any search-string))))
-      (zotero-choose-result item-list))))
+      (zotero--choose-result item-list))))
 
 ;; PDF annotation interaction code
 ;; NOTE this isn't zotero-specific, so this will likely be moved in the future
@@ -945,15 +954,17 @@ _q_uit
   (let ((cur-buffer (current-buffer))
         (annots (list)))
     (save-excursion
-      (dolist (item (progn
-                      (find-file pdf-file-path)
-                      (pdf-info-getannots)))
-        (when (not (eq (alist-get 'type item) 'link))
-          (add-to-list
-           'annots
-           (push (cons 'highlight-text
-                       (zotero-query--pdf-tools-extract-highlight-text item))
-                 item))))
+      (condition-case nil
+          (dolist (item (progn
+                          (find-file pdf-file-path)
+                          (pdf-info-getannots)))
+            (when (not (eq (alist-get 'type item) 'link))
+              (add-to-list
+               'annots
+               (push (cons 'highlight-text
+                           (zotero-query--pdf-tools-extract-highlight-text item))
+                     item))))
+        (error (list)))
       (switch-to-buffer cur-buffer)
       (sort
        annots
