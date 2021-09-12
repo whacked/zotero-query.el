@@ -1,0 +1,35 @@
+{
+  "name": "zotero-query.el",
+  "version": "1.0.0",
+  "description": "* elisp wrappers for querying against zotero.sqlite",
+  "main": "index.js",
+  "directories": {
+    "doc": "doc",
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/whacked/zotero-query.el.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/whacked/zotero-query.el/issues"
+  },
+  "homepage": "https://github.com/whacked/zotero-query.el#readme",
+  "dependencies": {
+    "@types/sqlite3": "^3.1.7",
+    "mustache": "^4.2.0",
+    "sqlite3": "^5.0.2",
+    "typescript": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/mustache": "^4.1.2",
+    "@types/node": "^16.9.1",
+    "ts-node": "^10.2.1"
+  }
+}
