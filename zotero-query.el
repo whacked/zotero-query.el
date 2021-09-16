@@ -33,14 +33,15 @@
 (require 'esqlite)
 (require 'hydra)
 (require 's)
+(require 'f)
 (require 'sql)
+(load-file "./external/yesql/yesql.el")
+(require 'yesql)
+(unless (require 'ini nil t)
+  (use-package ini
+    :quelpa ((ini :fetcher github :repo "daniel-ness/ini.el"))))
 
-(unless (require 'ini.el nil t)
- (with-temp-buffer
-   (url-insert-file-contents
-    "https://raw.githubusercontent.com/daniel-ness/ini.el/6c91643468b834d23688d5db3e855d2d961490e7/ini.el")
-   (eval-buffer)))
-(require 'hydra)
+
 
 (defmacro comment (&rest body) nil)
 
@@ -126,23 +127,12 @@
       (:key "abc" :date "2018-02-03")
       (:key "xyz" :title "other title")))))
 
-(setq zotero--sql-tags-join-string
-      (concat
-       ;; get tags
-       " LEFT OUTER JOIN"
-       " (SELECT itemTags.itemID, GROUP_CONCAT(tags.name, ', ') AS tags"
-       "  FROM tags"
-       "  JOIN itemTags ON itemTags.tagID = tags.tagID"
-       "  GROUP BY itemTags.itemID)"))
+(setq zotero--yesql-mappings
+      (parse-yesql (f-read-text (f-join "resources" "sql" "default.sql") 'utf-8)))
 
-(setq zotero--sql-creators-join-string
-      (concat
-       ;; get authors (creators)
-       " LEFT OUTER JOIN"
-       " (SELECT itemCreators.itemID, GROUP_CONCAT(creators.lastName, ', ') AS creators"
-       "  FROM itemCreators"
-       "  JOIN creators ON creators.creatorID = itemCreators.creatorID"
-       "  GROUP BY itemCreators.itemID)"))
+(setq zotero--sql-tags-join-string (gethash "tagsJoinString" zotero--yesql-mappings))
+
+(setq zotero--sql-creators-join-string (gethash "creatorsJoinString" zotero--yesql-mappings))
 
 (defun get-plist-keys (input-plist)
   (let ((out (list)))
@@ -191,16 +181,7 @@
 
 (setq zotero--id-date-key-title-select
       (zotero--concat-sql-statements
-       " SELECT"
-       "  items.itemID"
-       " ,items.key"
-       " ,items.dateAdded"
-       " ,items.dateModified"
-       " ,itemDataValues.value AS title"
-       " ,tags"
-       " ,creators"
-       " ,attachmentItems.key AS attachmentKey"
-       " ,itemAttachments.path AS attachmentPath"))
+       (gethash "baseSelectFragment" zotero--yesql-mappings)))
 
 (setq zotero--id-date-key-title-select-fields
       '(itemID key dateAdded dateModified title tags creators attachmentKey attachmentPath))
@@ -211,25 +192,7 @@
        (get-plist-keys zotero--special-properties-tables-query-plist)))
 
 (setq zotero--base-query-item-select-from
-      (zotero--concat-sql-statements
-       zotero--id-date-key-title-select
-       (zotero-get-special-properties-tables-selects
-        zotero--special-properties-tables-query-plist)
-       " FROM items"
-       ;; get the entry title
-       " JOIN itemData ON itemData.itemID = items.itemID"
-       " JOIN itemDataValues ON itemDataValues.valueID = itemData.valueID"
-       " JOIN fields ON fields.fieldID = itemData.fieldID"
-       (zotero-get-special-properties-joins
-        zotero--special-properties-tables-query-plist)
-       zotero--sql-tags-join-string
-       " AS tagsQ ON tagsQ.itemID = items.itemID"
-       zotero--sql-creators-join-string
-       " AS creatorsQ on creatorsQ.itemID = items.itemID"
-       ;; get attachments
-       " JOIN itemAttachments ON itemAttachments.parentItemID = items.itemID"
-       " JOIN items AS attachmentItems ON attachmentItems.itemID = itemAttachments.itemID"
-       " WHERE TRUE"))
+      (gethash "baseQueryItemSelectFrom" zotero--yesql-mappings))
 
 (defun zotero-query-by-item-id
     (item-id)
@@ -245,6 +208,9 @@
    "%" "%%"
    s))
 
+(defun zotero--yesql-substring-tokenify (query-substring)
+  (concat "'%" query-substring "%'"))
+
 (defun zotero-query-by-tags-and-creators-and-filenames
     (query-string)
   ;; looks for matching substring in
@@ -254,20 +220,19 @@
   ;; returns a list of property-list items like
   ;; (list (itemID 5 key "abcd" ...)
   ;;       (itemID 29 key "zxcv" ...) ...)
-  (let ((sql-query
-         (format
-          (zotero--concat-sql-statements
-           (zotero-escape-elisp-percent
-            zotero--base-query-item-select-from)
-           " AND (   LOWER(tags)     = LOWER('%%%s%%')"
-           "      OR LOWER(creators) LIKE LOWER('%%%s%%')"
-           "      OR LOWER(itemAttachments.path) LIKE LOWER('%%%s%%'))"
-           " AND fields.fieldName = 'title'"
-           " LIMIT 20")
-          query-string
-          query-string
-          query-string
-          )))
+  (let* ((query-string-format-pattern
+          (zotero-escape-elisp-percent
+           (zotero--yesql-substring-tokenify query-string)))
+         (sql-query
+          (format
+           (zotero--concat-sql-statements
+            (zotero-escape-elisp-percent
+             zotero--base-query-item-select-from)
+            (render-yesql
+             (gethash "tagsAndCreatorsAndFilenames" zotero--yesql-mappings)
+             query-string-format-pattern
+             query-string-format-pattern
+             query-string-format-pattern)))))
     (zotero--exec-sqlite-query-to-plist-items
      sql-query zotero--base-query-item-select-fields)))
 
@@ -279,40 +244,17 @@
   ;;     doi doi:1234.567 ...)
   ;;  9 (itemID 9 key ZXCV
   ;;     title "tied toll" ...) ...)
-  (let ((sql-query
-         (zotero--concat-sql-statements
-          zotero--id-date-key-title-select
-          ;; standard fields (title)
-          " ,ATTR_fields.fieldName"
-          " ,ATTR_itemDataValues.value"
-          " FROM items"
-          " JOIN itemData ON itemData.itemID = items.itemID"
-          " JOIN itemDataValues ON itemDataValues.valueID = itemData.valueID"
-          " JOIN fields ON fields.fieldID = itemData.fieldID"
-          ;; specific field
-          " JOIN itemData AS ATTR_itemData ON ATTR_itemData.itemID = items.itemID"
-          " JOIN itemDataValues AS ATTR_itemDataValues ON ATTR_itemDataValues.valueID = ATTR_itemData.valueID"
-          " JOIN fields AS ATTR_fields ON ATTR_fields.fieldID = ATTR_itemData.fieldID"
-          zotero--sql-tags-join-string
-          " AS tagsQ ON tagsQ.itemID = items.itemID"
-          zotero--sql-creators-join-string
-          " AS creatorsQ on creatorsQ.itemID = items.itemID"
-          ;; get attachments
-          " JOIN itemAttachments ON itemAttachments.parentItemID = items.itemID"
-          " JOIN items AS attachmentItems ON attachmentItems.itemID = itemAttachments.itemID"
-          " WHERE 1"
+  (let* ((field-name-query
           (cond ;; support for specific fields
-           ((null field-name) "")
-           ((string= (downcase field-name) "doi") " AND ATTR_fields.fieldName = 'DOI'")
-           (t (format " AND ATTR_fields.fieldName = '%s'" (upcase field-name))))
-          (format
-           " AND LOWER(ATTR_itemDataValues.value) LIKE LOWER('%%%s%%')"
-           query-string)
-          " AND fields.fieldName = 'title'"
-          ;; " GROUP BY items.itemID, fields.fieldName"
-          " GROUP BY items.itemID, ATTR_fields.fieldName, itemAttachments.contentType"
-          " ORDER BY items.itemID ASC"
-          " LIMIT 20")))
+           ((null field-name) "'NULL'")
+           (t (format "'%s'" field-name))))
+         (sql-query
+          (render-yesql
+           (gethash "queryByAttributes" zotero--yesql-mappings)
+           field-name-query
+           field-name-query
+           (zotero--yesql-substring-tokenify
+            query-string))))
     (let ((item-property-row-list
            (zotero--exec-sqlite-query-to-plist-items
             sql-query
@@ -344,39 +286,7 @@
     (search-word)
   (let ((sql-query
          (format
-          (zotero--concat-sql-statements
-           :debug
-           " SELECT"
-           ;; NOTE, the target item is the PARENT, not the attachment item!
-           "  parentItems.itemID"
-           " ,parentItems.key, parentItems.dateAdded, parentItems.dateModified"
-           " ,itemDataValues.value AS title"
-           " ,tags"
-           " ,creators"
-           " ,attachmentItems.key AS attachmentKey"
-           " ,itemAttachments.path AS attachmentPath"
-           " ,fulltextWords.word"
-           " FROM fulltextWords"
-           " JOIN fulltextItemWords ON fulltextWords.wordID = fulltextItemWords.wordID"
-           " JOIN items AS attachmentItems ON fulltextItemWords.itemID = attachmentItems.itemID"
-           " JOIN itemTypes ON attachmentItems.itemTypeID = itemTypes.itemTypeID"
-           ;; get the parent item
-           " JOIN itemAttachments ON itemAttachments.itemID = attachmentItems.itemID"
-           " JOIN items AS parentItems ON itemAttachments.parentItemID = parentItems.itemID"
-           ;; get the title of the PARENT item
-           " JOIN itemData ON parentItems.itemID = itemData.itemID"
-           " JOIN itemDataValues ON itemData.valueID = itemDataValues.valueID"
-           " JOIN fields ON itemData.fieldID = fields.fieldID"
-           zotero--sql-tags-join-string
-           " AS tagsQ ON tagsQ.itemID = parentItems.itemID"
-           zotero--sql-creators-join-string
-           " AS creatorsQ on creatorsQ.itemID = parentItems.itemID"
-           " WHERE 1"
-           " AND itemTypes.typeName = 'attachment'"
-           " AND fields.fieldName = 'title'"
-           " AND fulltextWords.word = LOWER('%s')"
-           " GROUP BY parentItems.itemID"
-           " LIMIT 20")
+          (render-yesql (gethash "queryByFulltextFragment" zotero--yesql-mappings) "'%s'")
           search-word)))
     (zotero--exec-sqlite-query-to-plist-items
      sql-query
@@ -936,6 +846,18 @@ _q_uit
            zotero--base-query-item-select-fields))))
   (tabulated-list-print t))
 
+
+(defun zotero-get-number-of-items
+    ()
+  ;; FIXME: items != entry that is selectable from the zotero browser
+  "get the total number of items in the zotero database"
+  (interactive)
+  (let ((sql-result
+         (first
+          (zotero--exec-sqlite-query-to-plist-items
+           "SELECT COUNT(*) FROM items"
+           '(count)))))
+    (string-to-number (plist-get sql-result 'count))))
 
 (defun zotero-query--pdf-tools-extract-highlight-text (pdf-tools-annotation-item)
   ;; ref org-noter.el:org-noter-create-skeleton()
