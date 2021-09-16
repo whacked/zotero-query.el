@@ -24,26 +24,44 @@ LEFT OUTER JOIN
  JOIN creators ON creators.creatorID = itemCreators.creatorID
  GROUP BY itemCreators.itemID)
 
+-- tagsAndCreatorsAndFilenames
+AND (   LOWER(tags)     = LOWER(?)
+     OR LOWER(creators) LIKE LOWER(?)
+     OR LOWER(itemAttachments.path) LIKE LOWER(?))
+AND fields.fieldName = 'title'
+LIMIT 20
+
 -- baseQueryItemSelectFrom
-{{baseSelectFragment}}
+{{&baseSelectFragment}}
 --- extended property columns: see (zotero-get-special-properties-tables-selects zotero--special-properties-tables-query-plist)
 --- , example
 FROM items
 --- get the entry title
-JOIN itemData ON itemData.itemID = items.itemID"
-JOIN itemDataValues ON itemDataValues.valueID = itemData.valueID"
-JOIN fields ON fields.fieldID = itemData.fieldID"
+JOIN itemData ON itemData.itemID = items.itemID
+JOIN itemDataValues ON itemDataValues.valueID = itemData.valueID
+JOIN fields ON fields.fieldID = itemData.fieldID
 --- extended property joins: see (zotero-get-special-properties-joins zotero--special-properties-tables-query-plist)
 --- JOIN (SELECT itemTags.itemID , CASE WHEN tags.name LIKE 'example-%' THEN 'CUSTOM-EXAMPLE' ELSE   ' ' END AS example FROM tags JOIN itemTags ON itemTags.tagID = tags.tagID WHERE tags.name IN ('example-1', 'example-2') GROUP BY itemTags.itemID) AS exampleQ on exampleQ.itemID = items.itemID
-{{tagsJoinString}} AS tagsQ ON tagsQ.itemID = items.itemID
-{{creatorsJoinString}} AS creatorsQ on creatorsQ.itemID = items.itemID
+{{&tagsJoinString}} AS tagsQ ON tagsQ.itemID = items.itemID
+{{&creatorsJoinString}} AS creatorsQ on creatorsQ.itemID = items.itemID
 --- get attachments
 JOIN itemAttachments ON itemAttachments.parentItemID = items.itemID
 JOIN items AS attachmentItems ON attachmentItems.itemID = itemAttachments.itemID
 WHERE TRUE
 
+-- queryByAttributesFragment
+AND (UPPER(?) = 'NULL' OR
+     --- query-string
+     ATTR_fields.fieldName = UPPER(?))
+AND LOWER(ATTR_itemDataValues.value) LIKE LOWER(?)
+AND fields.fieldName = 'title'
+--- GROUP BY items.itemID, fields.fieldName
+GROUP BY items.itemID, ATTR_fields.fieldName, itemAttachments.contentType
+ORDER BY items.itemID ASC
+LIMIT 20
+
 -- queryByAttributes
-{{baseSelectFragment}}
+{{&baseSelectFragment}}
 --- standard fields (title)
 , ATTR_fields.fieldName
 , ATTR_itemDataValues.value
@@ -55,18 +73,13 @@ JOIN fields ON fields.fieldID = itemData.fieldID
 JOIN itemData AS ATTR_itemData ON ATTR_itemData.itemID = items.itemID
 JOIN itemDataValues AS ATTR_itemDataValues ON ATTR_itemDataValues.valueID = ATTR_itemData.valueID
 JOIN fields AS ATTR_fields ON ATTR_fields.fieldID = ATTR_itemData.fieldID
-{{tagsJoinString}} AS tagsQ ON tagsQ.itemID = items.itemID
-{{creatorsJoinString}} AS creatorsQ on creatorsQ.itemID = items.itemID
+{{&tagsJoinString}} AS tagsQ ON tagsQ.itemID = items.itemID
+{{&creatorsJoinString}} AS creatorsQ on creatorsQ.itemID = items.itemID
 --- attachments
 JOIN itemAttachments ON itemAttachments.parentItemID = items.itemID
 JOIN items AS attachmentItems ON attachmentItems.itemID = itemAttachments.itemID
 WHERE 1
-AND ATTR_fields.fieldName = '$fieldName'
-AND LOWER(ATTR_itemDataValues.value) LIKE LOWER(?)
-AND fields.fieldName = 'title'
-GROUP BY items.itemID, ATTR_fields.fieldName, itemAttachments.contentType
-ORDER BY items.itemID ASC
-LIMIT 20
+{{&queryByAttributesFragment}}
 
 -- queryByFulltextFragment
 SELECT

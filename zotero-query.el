@@ -35,13 +35,13 @@
 (require 's)
 (require 'f)
 (require 'sql)
+(load-file "./external/yesql/yesql.el")
 (require 'yesql)
 (unless (require 'ini nil t)
   (use-package ini
     :quelpa ((ini :fetcher github :repo "daniel-ness/ini.el"))))
 
 
-(require 'hydra)
 
 (defmacro comment (&rest body) nil)
 
@@ -208,6 +208,9 @@
    "%" "%%"
    s))
 
+(defun zotero--yesql-substring-tokenify (query-substring)
+  (concat "'%" query-substring "%'"))
+
 (defun zotero-query-by-tags-and-creators-and-filenames
     (query-string)
   ;; looks for matching substring in
@@ -217,20 +220,19 @@
   ;; returns a list of property-list items like
   ;; (list (itemID 5 key "abcd" ...)
   ;;       (itemID 29 key "zxcv" ...) ...)
-  (let ((sql-query
-         (format
-          (zotero--concat-sql-statements
-           (zotero-escape-elisp-percent
-            zotero--base-query-item-select-from)
-           " AND (   LOWER(tags)     = LOWER('%%%s%%')"
-           "      OR LOWER(creators) LIKE LOWER('%%%s%%')"
-           "      OR LOWER(itemAttachments.path) LIKE LOWER('%%%s%%'))"
-           " AND fields.fieldName = 'title'"
-           " LIMIT 20")
-          query-string
-          query-string
-          query-string
-          )))
+  (let* ((query-string-format-pattern
+          (zotero-escape-elisp-percent
+           (zotero--yesql-substring-tokenify query-string)))
+         (sql-query
+          (format
+           (zotero--concat-sql-statements
+            (zotero-escape-elisp-percent
+             zotero--base-query-item-select-from)
+            (render-yesql
+             (gethash "tagsAndCreatorsAndFilenames" zotero--yesql-mappings)
+             query-string-format-pattern
+             query-string-format-pattern
+             query-string-format-pattern)))))
     (zotero--exec-sqlite-query-to-plist-items
      sql-query zotero--base-query-item-select-fields)))
 
@@ -242,22 +244,17 @@
   ;;     doi doi:1234.567 ...)
   ;;  9 (itemID 9 key ZXCV
   ;;     title "tied toll" ...) ...)
-  (let ((sql-query
-         (zotero--concat-sql-statements
-          (gethash "queryByAttributes" zotero--yesql-mappings)
+  (let* ((field-name-query
           (cond ;; support for specific fields
-           ((null field-name) "")
-           ((string= (downcase field-name) "doi") " AND ATTR_fields.fieldName = 'DOI'")
-           (t (format " AND ATTR_fields.fieldName = '%s'" (upcase field-name))))
-          (format
-           " AND LOWER(ATTR_itemDataValues.value) LIKE LOWER('%%%s%%')"
-           query-string)
-          " AND fields.fieldName = 'title'"
-          ;; " GROUP BY items.itemID, fields.fieldName"
-          " GROUP BY items.itemID, ATTR_fields.fieldName, itemAttachments.contentType"
-          " ORDER BY items.itemID ASC"
-          " LIMIT 20")))
-
+           ((null field-name) "'NULL'")
+           (t (format "'%s'" field-name))))
+         (sql-query
+          (render-yesql
+           (gethash "queryByAttributes" zotero--yesql-mappings)
+           field-name-query
+           field-name-query
+           (zotero--yesql-substring-tokenify
+            query-string))))
     (let ((item-property-row-list
            (zotero--exec-sqlite-query-to-plist-items
             sql-query
@@ -849,6 +846,18 @@ _q_uit
            zotero--base-query-item-select-fields))))
   (tabulated-list-print t))
 
+
+(defun zotero-get-number-of-items
+    ()
+  ;; FIXME: items != entry that is selectable from the zotero browser
+  "get the total number of items in the zotero database"
+  (interactive)
+  (let ((sql-result
+         (first
+          (zotero--exec-sqlite-query-to-plist-items
+           "SELECT COUNT(*) FROM items"
+           '(count)))))
+    (string-to-number (plist-get sql-result 'count))))
 
 (defun zotero-query--pdf-tools-extract-highlight-text (pdf-tools-annotation-item)
   ;; ref org-noter.el:org-noter-create-skeleton()
