@@ -3,9 +3,9 @@ import * as fs from 'fs'
 import * as sqlite3 from 'sqlite3'
 
 
-type YesqlMapping = Record<string, string>
+export type YesqlMapping = Record<string, string>
 
-function loadYesql(sqlSource: string): YesqlMapping {
+export function loadYesql(sqlSource: string): YesqlMapping {
     let yesqlMapping = {}
     let buffer: Array<string> = []
     let flushBuffer = (label: string) => {
@@ -32,14 +32,14 @@ function loadYesql(sqlSource: string): YesqlMapping {
 }
 
 
-const mapping = loadYesql(fs.readFileSync('../resources/sql/default.sql', 'utf-8'))
+export const sqlMapping = loadYesql(fs.readFileSync('../resources/sql/default.sql', 'utf-8'))
 
 
 if (require.main == module) {
     // ts-node zotero-query.ts <search-word> <path-to-zotero-db>
-    const db = new sqlite3.Database(process.argv[2])
-    var stmt = db.prepare(mapping["queryByFulltextFragment"])
-    stmt.each(process.argv[1], (err, row) => {
+    const db = new sqlite3.Database(process.argv[3])
+    var stmt = db.prepare(sqlMapping["queryByFulltextFragment"])
+    stmt.each(process.argv[2], (err, row) => {
         console.log(row)
     }, () => {
         stmt.finalize()
