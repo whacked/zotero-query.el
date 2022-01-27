@@ -35,7 +35,8 @@
 (require 's)
 (require 'f)
 (require 'sql)
-(load-file "./external/yesql/yesql.el")
+(load-file (concat (file-name-directory (or load-file-name (buffer-file-name)))
+                   "external/yesql/yesql.el"))
 (require 'yesql)
 (unless (require 'ini nil t)
   (use-package ini
@@ -128,7 +129,11 @@
       (:key "xyz" :title "other title")))))
 
 (setq zotero--yesql-mappings
-      (parse-yesql (f-read-text (f-join "resources" "sql" "default.sql") 'utf-8)))
+      (parse-yesql (f-read-text
+                    (f-join
+                     (file-name-directory (or load-file-name (buffer-file-name)))
+                     "resources" "sql" "default.sql")
+                    'utf-8)))
 
 (setq zotero--sql-tags-join-string (gethash "tagsJoinString" zotero--yesql-mappings))
 
