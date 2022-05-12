@@ -221,7 +221,7 @@
   ;; looks for matching substring in
   ;; - author *last name*s
   ;; - tags
-  ;; - filename of the attachment 
+  ;; - filename of the attachment
   ;; returns a list of property-list items like
   ;; (list (itemID 5 key "abcd" ...)
   ;;       (itemID 29 key "zxcv" ...) ...)
@@ -369,10 +369,27 @@
 
 (org-add-link-type "zotero" 'org-zotero-link-open 'org-zotero-link-export)
 
+(defun zotero-link-url ()
+  "returns the textual component of the zotero:-type link enclosed in org-style double brackets"
+  (interactive)
+  (let ((org-context (org-element-context)))
+    (plist-get (cadr org-context) :path)))
+
+;; ref markdown-mode.el::defun markdown-link-p
+(defun zotero-link-p ()
+  "Return non-nil when `point' is not a zotero link"
+  (interactive)
+  (let ((org-context (org-element-context)))
+    (and (eq 'link (first org-context))
+         (string= "zotero"
+                  (plist-get
+                   (cadr org-context)
+                   :type)))))
+
 (defun org-zotero-link-open (link-text)
   "Open zotero styled link."
   ;; (zotero-query "title or author or fulltext string... but probably title/author")  ;;  see zotero-query-any()
-  (let* ((spl (split-string link-text "::"))
+  (let* ((spl (split-string link-text "\\(::\\|#\\)"))  ;; link-path::org-style-locator, link-path#url-style-locator
          (zlink (car spl)))
     (when (cadr spl)
       (let* ((pg-spl (split-string (cadr spl) "++"))
@@ -409,7 +426,7 @@
            (insert (format "%s" zotero-output-buf))))
    "insert at point"
    :exit t)
-  
+
   ("c" (lambda ()
          (interactive)
          (kill-new (format "%s" zotero-output-buf))
@@ -444,7 +461,7 @@ ta_g_s
 _f_ile path
 _q_uit
 "
-  
+
   ("o" (lambda ()
          (interactive)
          (let* ((fpath (plist-get zotero-result-buf 'filepath))
@@ -453,16 +470,16 @@ _q_uit
            (when pnum
              (pdf-view-goto-page pnum)
              (setq zotero-query-buf nil)))))
-  
+
   ("O" (lambda ()
          (interactive)
          (org-open-file (plist-get zotero-result-buf 'filepath))))
-  
+
   ("A" (lambda ()
          (interactive)
          (zotero-query--show-annotations-selector
           (plist-get zotero-result-buf 'filepath))))
-  
+
   ("l" (lambda ()
          (interactive)
          (save-excursion
@@ -478,7 +495,7 @@ _q_uit
              (if (plist-get zotero-result-buf 'doi)
                  (concat "doi:" (plist-get zotero-result-buf 'doi))
                (plist-get zotero-result-buf 'title)))))))
-  
+
   ("i" (lambda ()
          (interactive)
          (set-zotero-active-result 'id)
@@ -649,7 +666,7 @@ _q_uit
                                     (pdf-info-gettext page real-edges nil pdf-annot-filepath)) ))
 
                          (comment (assoc-default 'contents annot))
-                         
+
                          (height (nth 1 real-edges)) ;; distance down the page
                          )
                     (insert (format-org-quote
@@ -687,11 +704,11 @@ _q_uit
 
 (defhydra pdf-annot-menu (:color blue)
   "do what?"
-  
+
   ("a" pdf-annot-insert-all
    "insert all"
    :exit t)
-  
+
   ("i" (lambda ()
          (interactive)
          (let ((match
@@ -712,9 +729,9 @@ _q_uit
                                                  (pdf-info-gettext page real-edges nil pdf-annot-filepath)) ))
 
                                       (comment (assoc-default 'contents annot))
-                                      
+
                                       (height (nth 1 real-edges)) ;; distance down the page
-                                      
+
                                       (full-string (format
                                                     "%s (%s) %s\n" text
                                                     (format-org-pdfview-link pdf-annot-filepath "source" page height)
@@ -736,7 +753,7 @@ _q_uit
                                                        page
                                                        (nth 1 edges))
                                                       comment))
-                                        
+
                                         helm-completion-list))))
                               ((eq 'ink annot-type)
                                (message "skipping ink item..."))
@@ -782,7 +799,7 @@ _q_uit
   tabulated-list-mode
   "zotero-query-quick-browser"
   "Quick list of entries from the Zotero database"
-  
+
   (setq tabulated-list-format zotero--display-headers)
   (setq tabulated-list-padding 1)
   (setq tabulated-list-sort-key (cons "dateModified" t))
@@ -797,7 +814,7 @@ _q_uit
   (define-key zotero-query-quick-browser-mode-map (kbd "RET")
     (lambda ()
       (interactive)
-      
+
       (let* ((selected-entry (tabulated-list-get-entry))
              (attachment-path-index
               (catch 'index
@@ -824,7 +841,7 @@ _q_uit
                   (plist-get maybe-best-match 'attachmentKey)
                   (plist-get maybe-best-match 'attachmentPath))))
           (zotero-result-menu/body)))))
-  
+
   (setq tabulated-list-entries
         (mapcar
          (lambda (record)
