@@ -125,7 +125,7 @@
   (mapcar (lambda (record) (-interleave prop-names record))
           (esqlite-read
            (format
-            "file:///%s?mode=ro"
+            "file:///%s?immutable=1"  ;; this allow RO access to a locked database  "file:///%s?mode=ro"
             (replace-regexp-in-string "^/" "" zotero-db))
            sql-query)))
 
