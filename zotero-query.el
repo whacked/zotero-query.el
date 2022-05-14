@@ -38,8 +38,9 @@
                    "external/yesql/yesql.el"))
 (require 'yesql)
 (unless (require 'ini nil t)
-  (use-package ini
-    :quelpa ((ini :fetcher github :repo "daniel-ness/ini.el"))))
+  ;; (use-package ini :quelpa ((ini :fetcher github :repo "daniel-ness/ini.el")))
+  (load (concat (file-name-directory (or load-file-name (buffer-file-name)))
+                "external/ini.el/ini")))
 
 
 (defmacro comment (&rest body) nil)
