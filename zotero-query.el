@@ -28,7 +28,6 @@
 ;; $HOME/.emacs.d/elpa/pdf-tools-*.*/epdfinfo
 ;; and it is executable
 
-(require 'cl)
 (require 'dash)
 (require 'esqlite)
 (require 'hydra)
