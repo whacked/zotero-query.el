@@ -28,6 +28,7 @@
 ;; $HOME/.emacs.d/elpa/pdf-tools-*.*/epdfinfo
 ;; and it is executable
 
+(require 'cl-lib)
 (require 'dash)
 (require 'esqlite)
 (require 'hydra)
@@ -111,11 +112,11 @@
 (defun zotero--concat-sql-statements
     (&rest statements)
   (let ((debug-mode (eq :debug
-                        (first statements))))
+                        (car statements))))
     (mapconcat
      'identity
      (if debug-mode
-         (rest statements)
+         (cdr statements)
        statements)
      (if debug-mode
          "\n"
@@ -151,7 +152,7 @@
 
 (defun get-plist-keys (input-plist)
   (let ((out (list)))
-    (loop for (k v)
+    (cl-loop for(k v)
           on input-plist by (function cddr)
           do
           (setq out (cons k out)))
@@ -176,7 +177,7 @@
 (defun zotero-get-special-properties-tables-selects
     (mapping-plist)
   (let ((out ""))
-    (loop for (table-name _query)
+    (cl-loop for(table-name _query)
           on mapping-plist by (function cddr)
           do
           (setq out (concat out (format ", %s" table-name))))
@@ -185,7 +186,7 @@
 (defun zotero-get-special-properties-joins
     (mapping-plist)
   (let ((out ""))
-    (loop for (table-name query)
+    (cl-loop for(table-name query)
           on mapping-plist by (function cddr)
           do
           (setq out
@@ -390,7 +391,7 @@
   "Return non-nil when `point' is not a zotero link"
   (interactive)
   (let ((org-context (org-element-context)))
-    (and (eq 'link (first org-context))
+    (and (eq 'link (car org-context))
          (string= "zotero"
                   (plist-get
                    (cadr org-context)
@@ -578,7 +579,7 @@ _q_uit
 (defun zotero--combined-query-result-to-choice-list
     (query-result)
   (let (out)
-    (loop for (item-id item-data)
+    (cl-loop for(item-id item-data)
           on query-result
           by (function cddr)
           do
@@ -785,7 +786,7 @@ _q_uit
   (interactive)
   (let* ((ctx (org-element-context))
          (filepath (org-element-property :path ctx)))
-    (if (not (and (eq 'link (first ctx))
+    (if (not (and (eq 'link (car ctx))
                   ;; for pdfview only
                   ;; (eq 'pdfview (org-element-property :type ctx))
                   (string-match "\\.pdf\\b" (or filepath ""))))
@@ -830,13 +831,13 @@ _q_uit
               (catch 'index
                 (let ((item-index 0))
                   (dolist (header-spec (append zotero--display-headers nil))
-                    (if (string= (first header-spec) "attachmentPath")
+                    (if (string= (car header-spec) "attachmentPath")
                         (throw 'index item-index)
                       (setq item-index (1+ item-index)))))))
              (selected-entry-extension
               (aref selected-entry attachment-path-index))
              (maybe-best-match
-              (first
+              (car
                (-filter
                 (lambda (rec)
                   (string= selected-entry-extension
@@ -885,7 +886,7 @@ _q_uit
   "get the total number of items in the zotero database"
   (interactive)
   (let ((sql-result
-         (first
+         (car
           (zotero--exec-sqlite-query-to-plist-items
            "SELECT COUNT(*) FROM items"
            '(count)))))

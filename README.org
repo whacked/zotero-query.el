@@ -25,6 +25,16 @@
    - [[https://github.com/mhayashi1120/Emacs-esqlite][esqlite]]
    - [[https://github.com/abo-abo/hydra][abo-abo's hydra]]
    - [[https://github.com/magnars/s.el][s]]
+   - mustache (dependency of =yesql= included in =external/=)
+
+** install using =straight.el=
+
+#+BEGIN_SRC emacs-lisp
+(use-package zotero-query
+  :straight (:host github :repo "whacked/zotero-query.el"
+             :files ("*.el" "external" "resources"))
+  :commands (zotero-query))
+#+END_SRC
 
 ** Zotero database location
    
